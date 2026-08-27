@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>500 Bits to Impact — The Life of a Single Observation</title>
+<style>
+  /* ---- Self-contained deck: no external fonts, CSS, or JS. Works fully offline. ----
+     Navigate: → / Space / click = next · ← = prev · F = fullscreen · O = overview
+     ?print in the URL (or press P) lays all slides out for PDF export.            */
+  :root{
+    --bg:#0b1020; --bg2:#0e1630; --ink:#e8ecf7; --muted:#9aa6c4;
+    --accent:#ff9900;      /* AWS orange */
+    --accent2:#37c2ff;     /* observability cyan */
+    --good:#3ecf8e; --bad:#ff5c6c; --line:#26304f;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans)}
+  .deck{height:100vh;width:100vw;overflow:hidden;position:relative}
+  .slide{
+    position:absolute;inset:0;display:none;flex-direction:column;justify-content:center;
+    padding:6vh 8vw;animation:fade .35s ease;
+    background:radial-gradient(1200px 600px at 80% -10%,rgba(55,194,255,.10),transparent),
+               radial-gradient(1000px 500px at -10% 110%,rgba(255,153,0,.08),transparent),var(--bg);
+  }
+  .slide.active{display:flex}
+  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  h1{font-size:clamp(28px,5vw,60px);line-height:1.05;margin:0 0 .4em}
+  h2{font-size:clamp(22px,3.4vw,40px);margin:0 0 .6em;color:#fff}
+  h2 .k{color:var(--accent)}
+  .kicker{font-family:var(--mono);color:var(--accent2);letter-spacing:.14em;text-transform:uppercase;
+    font-size:clamp(11px,1.2vw,14px);margin-bottom:1.2em}
+  p,li{font-size:clamp(15px,1.9vw,23px);line-height:1.5;color:var(--ink)}
+  ul{margin:.2em 0;padding-left:1.1em}
+  li{margin:.5em 0}
+  li::marker{color:var(--accent)}
+  .muted{color:var(--muted)}
+  .mono{font-family:var(--mono)}
+  .accent{color:var(--accent)} .cyan{color:var(--accent2)} .good{color:var(--good)} .bad{color:var(--bad)}
+  .big{font-size:clamp(40px,9vw,120px);font-family:var(--mono);font-weight:700;line-height:1}
+  .abstract{max-width:60ch;font-size:clamp(15px,1.9vw,22px);color:var(--muted);border-left:3px solid var(--accent);
+    padding-left:1em;margin:1em 0}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:2.4em;align-items:start}
+  .card{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:1.1em 1.3em}
+  .card h3{margin:.1em 0 .5em;font-size:clamp(15px,1.7vw,20px);color:#fff}
+  code,.codeblock{font-family:var(--mono)}
+  .codeblock{background:#060a17;border:1px solid var(--line);border-radius:12px;padding:1em 1.2em;
+    font-size:clamp(12px,1.35vw,17px);color:#cfe3ff;overflow:auto;white-space:pre;line-height:1.55}
+  .codeblock .c{color:#5f6f96}      /* comment */
+  .codeblock .s{color:var(--accent2)} /* string/emph */
+  .codeblock .o{color:var(--accent)}  /* keyword */
+  .tag{display:inline-block;font-family:var(--mono);font-size:.72em;padding:.15em .6em;border-radius:999px;
+    border:1px solid var(--line);color:var(--muted);margin-right:.4em}
+
+  /* horizontal architecture flow */
+  .flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;margin-top:.6em}
+  .node{background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:.7em .9em;min-width:150px;flex:1}
+  .node .t{font-weight:700;color:#fff;font-size:clamp(13px,1.5vw,18px)}
+  .node .d{color:var(--muted);font-family:var(--mono);font-size:clamp(10px,1.1vw,13px);margin-top:.25em}
+  .arrow{display:flex;align-items:center;color:var(--accent);font-size:1.6em;padding:0 .15em}
+  .runrow{display:grid;grid-template-columns:auto 1fr auto;gap:1em;align-items:baseline;
+    border-bottom:1px dashed var(--line);padding:.5em 0}
+  .runrow .n{font-family:var(--mono);color:var(--accent2)} .runrow .t{color:#fff;font-weight:600}
+  .runrow .m{font-family:var(--mono);color:var(--accent)}
+  .note{position:absolute;left:8vw;right:8vw;bottom:3.2vh;color:var(--muted);font-size:clamp(11px,1.25vw,15px);
+    border-top:1px solid var(--line);padding-top:.6em}
+  .note b{color:var(--accent2)}
+  /* chrome */
+  .bar{position:fixed;top:0;left:0;height:3px;background:var(--accent);z-index:20;transition:width .3s}
+  .hud{position:fixed;bottom:14px;right:18px;font-family:var(--mono);font-size:12px;color:var(--muted);z-index:20}
+  .brand{position:fixed;bottom:14px;left:18px;font-family:var(--mono);font-size:12px;color:var(--muted);z-index:20}
+  .brand b{color:var(--accent)}
+  /* print / overview */
+  body.print .deck{height:auto;overflow:visible}
+  body.print .slide{position:relative;display:flex;min-height:100vh;page-break-after:always;border-bottom:1px solid var(--line)}
+  body.print .hud,body.print .brand,body.print .bar{display:none}
+  body.notes-off .note{display:none}          /* S toggles presenter notes for the live audience */
+</style>
+</head>
+<body>
+<div class="bar" id="bar"></div>
+<div class="deck" id="deck">
+
+  <!-- 1 · Title -->
+  <section class="slide">
+    <div class="kicker">AWS · OpenTelemetry · CloudWatch · DevOps Agent</div>
+    <h1>500 Bits to Impact<br><span class="accent">The Life of a Single Observation</span></h1>
+    <div class="abstract">
+      Every dashboard, every alert, every 3&nbsp;a.m. page begins as a few hundred bits of truth
+      emitted by your code. In this hands-on hour we follow one OpenTelemetry metric observation
+      end&nbsp;to&nbsp;end — from the moment an app records it, through its OTLP journey into the
+      new CloudWatch OTel metric store, querying it back with PromQL, and — when an incident
+      strikes — handing it to the Amazon DevOps Agent to pinpoint root cause.
+    </div>
+    <p class="muted">Mostly live terminal + console. The deck is just the map.</p>
+    <div class="note"><b>Speaker (0:00–0:30):</b> Open cold. Read the first sentence of the abstract, then set the contract: "I'll spend most of this hour in a terminal — the deck is just the map." Don't over-introduce yourself; get to the hook fast. Frame the through-line: we follow <em>one</em> metric observation from the code that emits it all the way to a root-cause investigation.</div>
+  </section>
+
+  <!-- 2 · The hook -->
+  <section class="slide">
+    <div class="kicker">Act 0 · Framing</div>
+    <h2>How big is <span class="k">one</span> observation?</h2>
+    <div class="cols">
+      <div>
+        <ul>
+          <li>Bare <span class="mono">(timestamp, value)</span> ≈ <span class="accent mono">128 bits</span><br><span class="muted">two 64-bit numbers, no context</span></li>
+          <li>Self-describing point ≈ <span class="accent mono">1,000–1,600 bits</span><br><span class="muted">name, resource attrs, labels, units, encoding</span></li>
+          <li>Batched on the wire ≈ <span class="accent mono">120–160 bits</span><br><span class="muted">shared context amortized across the batch</span></li>
+        </ul>
+      </div>
+      <div style="text-align:center">
+        <div class="big accent">~500</div>
+        <div class="mono muted" style="margin-top:.4em">bits — an <span class="cyan">honest, rounded</span> hook<br>between the batched floor and the standalone ceiling</div>
+      </div>
+    </div>
+    <div class="note"><b>Speaker (~4m):</b> Walk the three numbers top to bottom. Pause on the jump from 128 bits to ~1.6&nbsp;Kbits — that's the price of being <em>self-describing</em>, which is the whole point of OTel. Then show how batching amortizes it back down. Land "~500" as an honest, rounded hook, not a spec constant — the candor buys you credibility for the rest of the hour. Transition: "so let's watch one of these get born."</div>
+  </section>
+
+  <!-- 3 · Architecture -->
+  <section class="slide">
+    <div class="kicker">The Journey · one path, left to right</div>
+    <h2>One observation, end to end</h2>
+    <div class="flow">
+      <div class="node"><div class="t">Go app · Fargate</div><div class="d">checkout-service<br>records 2 instruments</div></div>
+      <div class="arrow">→</div>
+      <div class="node"><div class="t">ADOT sidecar</div><div class="d">OTLP/gRPC :4317<br>otlphttp + sigv4auth</div></div>
+      <div class="arrow">→</div>
+      <div class="node"><div class="t">CloudWatch OTel store</div><div class="d">monitoring.us-east-1<br>/v1/metrics</div></div>
+      <div class="arrow">→</div>
+      <div class="node"><div class="t">PromQL</div><div class="d">cwpromql query<br>+ PromQL alarm</div></div>
+      <div class="arrow">→</div>
+      <div class="node"><div class="t">DevOps Agent</div><div class="d">Olympus space<br>root-cause on breach</div></div>
+    </div>
+    <p style="margin-top:1.2em"><span class="tag">one task = app + collector</span><span class="tag">task role: cloudwatch:PutMetricData</span><span class="tag">us-east-1 throughout</span></p>
+    <div class="note"><b>Speaker (~2m, close of Act 2):</b> The ONLY architecture slide — trace the path left to right with your cursor. Land two things: (1) one Fargate task holds both the app and the collector sidecar — a pattern they can copy verbatim; (2) the export is "just" OTLP/HTTP to a SigV4-signed CloudWatch URL, no new protocol to learn. Then drop straight to the terminal; don't linger on the boxes.</div>
+  </section>
+
+  <!-- 4 · Run of show -->
+  <section class="slide">
+    <div class="kicker">Run of Show · ~54m + Q&amp;A</div>
+    <h2>Five acts</h2>
+    <div class="runrow"><span class="n">0 · 4m</span><span><span class="t">Framing</span> — why one observation; the honest byte math</span><span class="m">slides</span></div>
+    <div class="runrow"><span class="n">1 · 7m</span><span><span class="t">Birth</span> — app records it; instruments, attrs, OTLP/gRPC</span><span class="m">main.go</span></div>
+    <div class="runrow"><span class="n">2 · 8m</span><span><span class="t">Journey</span> — ADOT sigv4auth → CloudWatch OTLP; confirm ingest</span><span class="m">collector.yaml</span></div>
+    <div class="runrow"><span class="n">3 · 12m</span><span><span class="t">Interrogation</span> — query it back: rate, error ratio, p95</span><span class="m">cwpromql</span></div>
+    <div class="runrow"><span class="n">4 · 18m</span><span><span class="t bad">Incident</span> — inject fault, alarm fires, agent finds root cause</span><span class="m">the payoff</span></div>
+    <div class="runrow"><span class="n">5 · 7m</span><span><span class="t">Impact</span> — cost levers, activation, the repeatable pattern</span><span class="m">slides</span></div>
+    <div class="note"><b>Speaker (optional, &lt;1m):</b> Show only if the room wants a map — otherwise skip to keep momentum. If you show it, point at Act&nbsp;4 and say "this is where we're headed." Protect the Incident's 18 minutes: if you're behind, cut Interrogation queries, never Act&nbsp;4. Total ~54m content + Q&amp;A.</div>
+  </section>
+
+  <!-- 5 · Incident live -->
+  <section class="slide">
+    <div class="kicker">Act 4 · Incident (the payoff)</div>
+    <h2>Break it on purpose</h2>
+    <div class="cols">
+      <div>
+        <div class="codeblock"><span class="c"># healthy: error ratio returns no series</span>
+cwq query '<span class="s">sum(rate({__name__="checkout_requests_total",
+  outcome="error"}[1m]))
+ / sum(rate({__name__="checkout_requests_total"}[1m]))</span>'
+
+<span class="c"># inject the incident</span>
+./inject-fault.sh <span class="o">error</span> 0.6
+
+<span class="c"># ~1–2 min later: ratio &gt; 0.2 → ALARM</span></div>
+      </div>
+      <div>
+        <ul>
+          <li>PromQL alarm <span class="mono accent">checkout-error-rate-slo</span> flips to <span class="bad">ALARM</span></li>
+          <li>Hand it to the DevOps Agent:<br><span class="muted mono">"give me an overview of my recent alarms"</span></li>
+          <li>Then: <span class="muted mono">"investigate checkout-error-rate-slo and find the root cause"</span></li>
+          <li>Agent correlates the <span class="mono">outcome="error"</span> spike on <span class="mono">checkout-service</span></li>
+          <li>Recover: <span class="mono">./inject-fault.sh none</span> → back to <span class="good">OK</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="note"><b>Speaker (Act 4, ~18m — the payoff):</b> Run the healthy query FIRST so the room sees zero errors, then inject the fault and explain what it does (flips an SSM flag the app polls every 5s — no redeploy). While the ratio climbs, talk through the alarm's PromQL so the wait feels intentional. Once it's ALARM, hand to the agent and read its reasoning aloud as it works — never sit in silence. Recover at the end so you leave the system green.</div>
+  </section>
+
+  <!-- 6 · Auto-trigger (the closed gap) -->
+  <section class="slide">
+    <div class="kicker">Act 4 · fully automated (the closed gap)</div>
+    <h2>Nobody typed anything</h2>
+    <div class="flow" style="margin-bottom:1em">
+      <div class="node"><div class="t bad">Alarm → ALARM</div><div class="d">checkout-error-rate-slo</div></div>
+      <div class="arrow">→</div>
+      <div class="node"><div class="t">EventBridge</div><div class="d">Alarm State Change</div></div>
+      <div class="arrow">→</div>
+      <div class="node"><div class="t">Lambda</div><div class="d">HMAC sign + POST<br>DynamoDB dedup</div></div>
+      <div class="arrow">→</div>
+      <div class="node"><div class="t good">Investigation</div><div class="d">created automatically</div></div>
+    </div>
+    <ul>
+      <li>There's <span class="accent">no native CloudWatch→agent trigger</span> yet — this bridges it via the generic webhook</li>
+      <li>Per-alarm <span class="mono">cooldown</span> (DynamoDB) means a flapping alarm can't spawn a swarm of investigations</li>
+      <li>Ships as an opt-in CDK construct: <span class="mono">cdk deploy -c enableAutoTrigger=true</span> — secret lives in Secrets Manager, never in source</li>
+    </ul>
+    <div class="note"><b>Speaker (optional, ~2m):</b> Frame the gap honestly first — there's no native CloudWatch→agent trigger yet, so we bridged it. If doing it live, inject the fault and deliberately stay quiet for a beat — letting the investigation appear on its own lands well. Mention the DynamoDB cooldown so nobody worries about alarm storms. Keep it tight: this is a bonus, not the main act.</div>
+  </section>
+
+  <!-- 7 · Impact -->
+  <section class="slide">
+    <div class="kicker">Act 5 · Impact &amp; takeaways</div>
+    <h2>What you take home</h2>
+    <div class="cols">
+      <div class="card">
+        <h3>Cost levers</h3>
+        <ul>
+          <li>Export interval — fewer points on the wire (60s prod; 15s for demo speed)</li>
+          <li>Control <span class="accent">label cardinality</span></li>
+          <li>High-cardinality store: up to <span class="mono">150 labels</span>/series (<span class="cyan">preview</span> — price accordingly)</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Repeatable pattern</h3>
+        <ul>
+          <li>OTel-native, SigV4 to <span class="mono">monitoring.us-east-1</span></li>
+          <li>PromQL to query <em>and</em> alarm</li>
+          <li>Agent for RCA — auto-triggered if you want it</li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top:1em"><span class="accent">Takeaway:</span> the whole pipeline is one repeatable pattern — OTel SDK → ADOT SigV4 → CloudWatch OTel store → PromQL to query <em>and</em> alarm → agent for RCA. Apply it to your own service the same way; the internal repo has the reference implementation.</p>
+    <div class="note"><b>Speaker (~7m, close):</b> Land the pattern, not a product pitch — this is an internal reference, not a public giveaway. Name the preview caveat honestly (pricing and label limits can still change). Close on the reliability story: one observation, followed honestly from birth to root cause. Then open Q&amp;A.</div>
+  </section>
+
+  <!-- 8 · Backup: PromQL -->
+  <section class="slide">
+    <div class="kicker">Backup · PromQL cheat-sheet</div>
+    <h2>Exact selectors</h2>
+    <div class="codeblock"><span class="c"># request rate</span>
+sum(rate(checkout_requests_total[1m]))
+
+<span class="c"># error ratio (SLO) — inline label matcher needs the __name__ form</span>
+sum(rate({__name__="checkout_requests_total", outcome="error"}[1m]))
+ / sum(rate({__name__="checkout_requests_total"}[1m]))          <span class="c"># alarm: … &gt; 0.2</span>
+
+<span class="c"># p95 latency (seconds-scale buckets)</span>
+histogram_quantile(0.95,
+  sum(rate(checkout_request_duration_seconds_bucket[5m])) by (le))
+
+<span class="c"># always --region us-east-1 ; short [1m] windows for live responsiveness</span></div>
+    <div class="note"><b>Speaker (backup):</b> Only show if the terminal fails or someone asks for exact selectors — otherwise stay live. The one gotcha worth saying aloud: a bare metric name with an inline <span class="mono">{label=}</span> matcher is rejected by the query API — use the <span class="mono">{__name__=...}</span> form. Note the seconds-scale histogram buckets so p95 reads correctly.</div>
+  </section>
+
+  <!-- 9 · Backup: agent prompts -->
+  <section class="slide">
+    <div class="kicker">Backup · DevOps Agent prompts</div>
+    <h2>Prompt-crafting for RCA</h2>
+    <ul>
+      <li class="mono">"Error rate on checkout-service breached 20% at &lt;time&gt; — what changed?"</li>
+      <li class="mono">"Correlate checkout_request_duration_seconds latency with the outcome=&quot;error&quot; spike"</li>
+      <li class="mono">"Which fault mode explains the /checkout errors — latency or 5xx?"</li>
+    </ul>
+    <p class="muted" style="margin-top:1em">Reminder: the agent is <span class="accent">read-only by design</span> — it investigates, you remediate.</p>
+    <div class="note"><b>Speaker (backup):</b> Use if the live agent stalls, or to teach prompt-crafting — show how naming the metric, the time, and the suspected cause steers the investigation. Lean on the read-only-by-design point; it reassures security-minded folks that the agent investigates but won't touch prod. Good spot to take a question while the room is engaged.</div>
+  </section>
+
+</div>
+
+<div class="brand"><b>500 Bits</b> · us-east-1 · <span style="opacity:.7">F fullscreen · S notes</span></div>
+<div class="hud" id="hud">1 / 9</div>
+
+<script>
+  const slides=[...document.querySelectorAll('.slide')];
+  let i=0;
+  const hud=document.getElementById('hud'), bar=document.getElementById('bar');
+  function show(n){
+    i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach((s,x)=>s.classList.toggle('active',x===i));
+    hud.textContent=(i+1)+' / '+slides.length;
+    bar.style.width=((i+1)/slides.length*100)+'%';
+    location.hash=i+1;
+  }
+  function next(){show(i+1)} function prev(){show(i-1)}
+  document.addEventListener('keydown',e=>{
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){e.preventDefault();next()}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();prev()}
+    else if(e.key==='Home'){show(0)} else if(e.key==='End'){show(slides.length-1)}
+    else if(e.key.toLowerCase()==='f'){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen()}
+    else if(e.key.toLowerCase()==='p'){document.body.classList.toggle('print')}
+    else if(e.key.toLowerCase()==='s'){document.body.classList.toggle('notes-off')}
+  });
+  document.getElementById('deck').addEventListener('click',e=>{ if(!e.target.closest('a')) next(); });
+  if(location.search.includes('print')) document.body.classList.add('print');
+  show((parseInt(location.hash.slice(1))||1)-1);
+</script>
+</body>
+</html>

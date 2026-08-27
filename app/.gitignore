@@ -1,0 +1,6 @@
+# Compiled binary
+/app
+checkout-service
+# Go workspace
+go.work
+go.work.sum

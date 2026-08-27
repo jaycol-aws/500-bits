@@ -1,0 +1,8 @@
+node_modules
+cdk.out
+*.js
+*.d.ts
+# account-specific — regenerated per environment, must not be shared
+cdk.context.json
+cdk-outputs.json
+.cdk.staging

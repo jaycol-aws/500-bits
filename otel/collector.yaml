@@ -1,0 +1,44 @@
+# ADOT collector config — 500 Bits to Impact
+#
+# Receives OTLP from the checkout-service app (sidecar, same task) and exports
+# to the CloudWatch OTLP metrics endpoint using SigV4 signing.
+#
+# Passed to the aws-otel-collector container via the AOT_CONFIG_CONTENT env var
+# (see cdk/lib/five-hundred-bits-stack.ts). Endpoint + service per SPEC.md.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # Batch to amortize the per-request cost — this is the "500 bits" story:
+  # a single point is tiny; batching drops the marginal cost even further.
+  batch:
+    send_batch_size: 200
+    timeout: 10s
+
+exporters:
+  otlphttp:
+    tls:
+      insecure: false
+    # CloudWatch OTLP metrics endpoint (SPEC.md: us-east-1).
+    metrics_endpoint: "https://monitoring.us-east-1.amazonaws.com/v1/metrics"
+    auth:
+      authenticator: sigv4auth
+
+extensions:
+  sigv4auth:
+    service: "monitoring"
+    region: "us-east-1"
+
+service:
+  extensions: [sigv4auth]
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp]

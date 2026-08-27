@@ -1,0 +1,16 @@
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# logs
+*.log
+
+# python cache
+__pycache__/
+*.pyc
+
+# build artifacts (also covered by app/.gitignore and cdk/.gitignore)
+**/node_modules/
+**/cdk.out/
