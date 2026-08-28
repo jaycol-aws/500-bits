@@ -125,7 +125,7 @@
     <div class="flow">
       <div class="node"><div class="t">Go app · Fargate</div><div class="d">checkout-service<br>records 2 instruments</div></div>
       <div class="arrow">→</div>
-      <div class="node"><div class="t">ADOT sidecar</div><div class="d">OTLP/gRPC :4317<br>otlphttp + sigv4auth</div></div>
+      <div class="node"><div class="t">OTel Collector</div><div class="d">OTLP/gRPC :4317<br>otlphttp + sigv4auth</div></div>
       <div class="arrow">→</div>
       <div class="node"><div class="t">CloudWatch OTel store</div><div class="d">monitoring.us-east-1<br>/v1/metrics</div></div>
       <div class="arrow">→</div>
@@ -143,7 +143,7 @@
     <h2>Five acts</h2>
     <div class="runrow"><span class="n">0 · 4m</span><span><span class="t">Framing</span> — why one observation; the honest byte math</span><span class="m">slides</span></div>
     <div class="runrow"><span class="n">1 · 7m</span><span><span class="t">Birth</span> — app records it; instruments, attrs, OTLP/gRPC</span><span class="m">main.go</span></div>
-    <div class="runrow"><span class="n">2 · 8m</span><span><span class="t">Journey</span> — ADOT sigv4auth → CloudWatch OTLP; confirm ingest</span><span class="m">collector.yaml</span></div>
+    <div class="runrow"><span class="n">2 · 8m</span><span><span class="t">Journey</span> — OTel Collector sigv4auth → CloudWatch OTLP; confirm ingest</span><span class="m">collector.yaml</span></div>
     <div class="runrow"><span class="n">3 · 12m</span><span><span class="t">Interrogation</span> — query it back: rate, error ratio, p95</span><span class="m">Query Studio</span></div>
     <div class="runrow"><span class="n">4 · 18m</span><span><span class="t bad">Incident</span> — inject fault, alarm fires, agent finds root cause</span><span class="m">the payoff</span></div>
     <div class="runrow"><span class="n">5 · 7m</span><span><span class="t">Impact</span> — cost levers, activation, the repeatable pattern</span><span class="m">slides</span></div>
@@ -222,7 +222,7 @@
         </ul>
       </div>
     </div>
-    <p style="margin-top:1em"><span class="accent">Takeaway:</span> the whole pipeline is one repeatable pattern — OTel SDK → ADOT SigV4 → CloudWatch OTel store → PromQL to query <em>and</em> alarm → agent for RCA. Apply it to your own service the same way; the internal repo has the reference implementation.</p>
+    <p style="margin-top:1em"><span class="accent">Takeaway:</span> the whole pipeline is one repeatable pattern — OTel SDK → OTel Collector (SigV4) → CloudWatch OTel store → PromQL to query <em>and</em> alarm → agent for RCA. Apply it to your own service the same way; the internal repo has the reference implementation.</p>
     <div class="note"><b>Speaker (~7m, close):</b> Land the pattern, not a product pitch — this is an internal reference, not a public giveaway. Name the preview caveat honestly (pricing and label limits can still change). Close on the reliability story: one observation, followed honestly from birth to root cause. Then open Q&amp;A.</div>
   </section>
 

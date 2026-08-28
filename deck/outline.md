@@ -35,7 +35,7 @@
 
 - **Left → right, single horizontal flow:**
   - **Go app on ECS Fargate** (`checkout-service`, port 8080) records `checkout_requests_total` / `checkout_request_duration_seconds`
-  - → **ADOT collector sidecar** (same task): OTLP/gRPC in at `localhost:4317` → `otlphttp` exporter w/ `sigv4auth`
+  - → **OpenTelemetry Collector sidecar** (same task): OTLP/gRPC in at `localhost:4317` → `otlphttp` exporter w/ `sigv4auth`
   - → **CloudWatch OTel metric store** via `https://monitoring.us-east-1.amazonaws.com/v1/metrics`
   - → **PromQL query API** — query in **CloudWatch Query Studio** (optionally `cwpromql`) **+ PromQL alarm** (`checkout-error-rate-slo`)
   - → **Amazon DevOps Agent** (Olympus Agent Space, us-east-1) for root-cause on breach
@@ -49,7 +49,7 @@
 
 - **Framing — 4m:** why one observation; the honest byte math
 - **Birth — 7m:** app records it; instruments, attributes, OTLP/gRPC to sidecar
-- **Journey — 8m:** ADOT `sigv4auth` → CloudWatch OTLP endpoint; confirm ingest
+- **Journey — 8m:** OTel Collector `sigv4auth` → CloudWatch OTLP endpoint; confirm ingest
 - **Interrogation — 12m:** query it back with PromQL in Query Studio (rate, error ratio, latency); `cwpromql` optional
 - **Incident — 18m:** inject fault (`/admin/fault`), watch `checkout-error-rate-slo` fire, hand to DevOps Agent
 - **Impact — 7m:** cost levers, activation takeaways, the repeatable pattern
@@ -76,7 +76,7 @@
 - **Cost levers:** 60s export interval (fewer points), control **label cardinality**, high-cardinality store supports up to **150 labels** per series; feature is **preview** — price accordingly
 - **Retention/activation takeaway:** value compounds with a second integration + a first investigation — don't stop at a single default source
 - **Repeatable pattern:** OTel-native, SigV4 to `monitoring.us-east-1`, PromQL to query + alarm, agent for RCA
-- **Takeaway:** one repeatable pattern — OTel SDK → ADOT SigV4 → CloudWatch OTel store → PromQL (query + alarm) → agent for RCA; the internal repo has the reference implementation
+- **Takeaway:** one repeatable pattern — OTel SDK → OTel Collector (SigV4) → CloudWatch OTel store → PromQL (query + alarm) → agent for RCA; the internal repo has the reference implementation
 - Internal reference: repo + `cwpromql` cheat-sheet (backup slide)
 
 > **Speaker note:** Land the pattern, not a product pitch — this is an internal reference, not a public giveaway. Name the preview caveat honestly.

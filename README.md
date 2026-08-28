@@ -9,7 +9,7 @@
 > on AWS.
 
 A complete, deployable webinar demo: a Go service on **ECS Fargate** emits OTel
-metrics through an **ADOT sidecar** into the **CloudWatch OTLP metric store**
+metrics through an **OpenTelemetry Collector sidecar** into the **CloudWatch OTLP metric store**
 (`monitoring.us-east-1.amazonaws.com/v1/metrics`), queried with **PromQL** in
 **CloudWatch Query Studio** (optionally the
 [cw-otel-cli](https://github.com/lewinkedrs/cw-otel-cli) CLI), with a **PromQL
@@ -22,7 +22,7 @@ alarm** and an **Amazon DevOps Agent** investigation as the finale.
   │  checkout-service (Go, OTel SDK)                                  │
   │        │  OTLP/gRPC  localhost:4317                               │
   │        ▼                                                          │
-  │  ADOT collector sidecar  ──otlphttp + sigv4auth──►                │
+  │  OTel Collector sidecar  ──otlphttp + sigv4auth──►                │
   └───────────────────────────────────┬──────────────────────────────┘
                                        ▼
         CloudWatch OTLP metric store  (monitoring.us-east-1.amazonaws.com/v1/metrics)
@@ -34,7 +34,7 @@ alarm** and an **Amazon DevOps Agent** investigation as the finale.
 ```
 
 The service self-drives ~5 rps so telemetry always flows. An incident is injected
-by flipping an **SSM parameter** (`/500bits/fault`) the app polls — no inbound
+by flipping an **SSM parameter** the app polls — no inbound
 listener, no load balancer, no shell in the image.
 
 ## Repo layout
@@ -43,8 +43,8 @@ listener, no load balancer, no shell in the image.
 |---|---|
 | `SPEC.md` | Canonical contract — metric names, endpoints, ports, region |
 | `app/` | Instrumented Go `checkout-service` (+ Dockerfile) |
-| `otel/collector.yaml` | ADOT collector config (OTLP → CloudWatch OTLP endpoint) |
-| `cdk/` | CDK (TypeScript): VPC, ECS Fargate service + ADOT sidecar, IAM, SSM flag |
+| `otel/collector.yaml` | OpenTelemetry Collector config (OTLP → CloudWatch OTLP endpoint) |
+| `cdk/` | CDK (TypeScript): VPC, ECS Fargate service + OTel Collector sidecar, IAM, SSM flag |
 | `demo/` | `RUNBOOK.md`, `promql-queries.md`, `inject-fault.sh`, `create-alarm.sh` |
 | `deck/outline.md` | Minimal builder-audience slide outline |
 
@@ -146,9 +146,9 @@ Notes:
   updated — delete it, then `cdk deploy` again.
 
 ## Notes / caveats
-- CloudWatch OTLP metrics + PromQL is a **preview** capability. PromQL alarms are
-  created via `aws cloudwatch put-metric-alarm --evaluation-criteria PromQLCriteria`
-  (see `demo/create-alarm.sh`); there is no CFN/CDK construct for them yet.
+- PromQL alarms are created via `aws cloudwatch put-metric-alarm
+  --evaluation-criteria PromQLCriteria` (see `demo/create-alarm.sh`); there is no
+  CFN/CDK construct for them yet.
 - OTLP-ingested metrics do **not** appear in classic `list-metrics`/`get-metric-data`
   — query them via PromQL only.
 - Export interval is 15s here for demo responsiveness; 60s is the production standard.

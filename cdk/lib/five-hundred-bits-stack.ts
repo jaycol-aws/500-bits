@@ -29,8 +29,9 @@ import { DevOpsAgentAutoTrigger } from './devops-auto-trigger';
  *       1. the "checkout-service" app (built from ../app) on port 8080
  *          with an internal load generator, exporting OTLP/gRPC to
  *          localhost:4317
- *       2. an ADOT collector sidecar that receives OTLP on 4317/4318 and
- *          exports metrics to the CloudWatch OTLP metrics endpoint
+ *       2. an upstream OpenTelemetry Collector (contrib) sidecar that receives
+ *          OTLP on 4317/4318 and exports metrics to the CloudWatch OTLP
+ *          metrics endpoint via otlphttp + sigv4auth
  *
  * All names, ports, endpoints, and resource attributes are dictated by
  * SPEC.md (the canonical demo contract).
@@ -83,12 +84,11 @@ export class FiveHundredBitsStack extends Stack {
     // ---------------------------------------------------------------------
     // Shared log group for both containers (awslogs driver)
     // ---------------------------------------------------------------------
-    // SPEC.md fixes the log group name; ONE_WEEK retention keeps demo logs
-    // cheap and disposable. DESTROY removal policy ensures the log group is
-    // deleted on stack teardown/rollback rather than orphaned — otherwise the
-    // fixed name collides (NAME_CONFLICT) on the next create.
+    // Auto-named by CloudFormation (no fixed logGroupName) so the stack can be
+    // deployed more than once per account/Region without a name collision.
+    // ONE_WEEK retention keeps demo logs cheap; DESTROY removal keeps teardown
+    // (and rollback) clean — no orphaned log group to collide on the next create.
     const logGroup = new logs.LogGroup(this, 'LogGroup', {
-      logGroupName: '/ecs/500-bits-to-impact',
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: RemovalPolicy.DESTROY,
     });
@@ -107,7 +107,7 @@ export class FiveHundredBitsStack extends Stack {
       },
     });
 
-    // The TASK ROLE is the identity the running containers assume. The ADOT
+    // The TASK ROLE is the identity the running containers assume. The
     // collector's sigv4auth exporter signs requests as this role, so it needs
     // cloudwatch:PutMetricData. SPEC.md requires Resource '*' (PutMetricData
     // does not support resource-level scoping).
@@ -128,8 +128,10 @@ export class FiveHundredBitsStack extends Stack {
     // The app polls this SSM parameter every ~5s. demo/inject-fault.sh writes
     // "error:0.6" | "latency:0.5" | "none" here to drive/recover the incident.
     // This keeps the service fully private — no inbound path required.
+    // Auto-named (no fixed parameterName) for the same multi-deploy reason. The
+    // app receives the generated name via FAULT_PARAM; demo/inject-fault.sh
+    // resolves it from the FaultParameterName stack output.
     const faultParam = new ssm.StringParameter(this, 'FaultFlag', {
-      parameterName: '/500bits/fault',
       stringValue: 'none',
       description: '500 Bits demo fault-injection flag: none | error:<rate> | latency:<rate>',
     });
@@ -153,9 +155,9 @@ export class FiveHundredBitsStack extends Stack {
         // Service identity — must match SPEC.md exactly for the query path.
         OTEL_RESOURCE_ATTRIBUTES:
           'service.name=checkout-service,deployment.environment=demo,service.version=1.0.0',
-        AWS_REGION: 'us-east-1',
-        // SSM parameter the app polls for the Act 4 fault flag.
-        FAULT_PARAM: '/500bits/fault',
+        AWS_REGION: this.region,
+        // SSM parameter the app polls for the Act 4 fault flag (auto-generated name).
+        FAULT_PARAM: faultParam.parameterName,
       },
       logging: ecs.LogDrivers.awsLogs({
         streamPrefix: 'app',
@@ -170,27 +172,35 @@ export class FiveHundredBitsStack extends Stack {
     });
 
     // ---------------------------------------------------------------------
-    // Container 2: ADOT collector sidecar
+    // Container 2: OpenTelemetry Collector sidecar (upstream contrib)
     // ---------------------------------------------------------------------
-    // Read the collector config at synth time and inline it via the
-    // AOT_CONFIG_CONTENT environment variable — the AWS OTel Collector image
-    // loads its pipeline from this variable when set, avoiding any need to
-    // bake or mount a config file.
-    const collectorConfig = fs.readFileSync(
-      path.resolve(__dirname, '..', '..', 'otel', 'collector.yaml'),
-      'utf8',
-    );
+    // Read the collector config at synth time (region-substituted above) and
+    // pass it to the collector via the OTEL_CONFIG env var + `--config=env:`,
+    // avoiding any need to bake or mount a config file.
+    // Read the collector pipeline and substitute the deploy region so the OTLP
+    // endpoint host + sigv4auth region follow `-c region=...`.
+    const collectorConfig = fs
+      .readFileSync(path.resolve(__dirname, '..', '..', 'otel', 'collector.yaml'), 'utf8')
+      .replace(/us-east-1/g, this.region);
 
     const collectorContainer = taskDefinition.addContainer('CollectorContainer', {
-      containerName: 'aws-otel-collector',
+      containerName: 'otel-collector',
+      // Upstream OpenTelemetry Collector (contrib distro) — ships the otlphttp
+      // exporter + sigv4auth extension this pipeline needs. Pulled from ghcr.io
+      // (reliable unauthenticated Fargate pulls, multi-arch incl. arm64) and
+      // pinned for reproducibility.
       image: ecs.ContainerImage.fromRegistry(
-        'public.ecr.aws/aws-observability/aws-otel-collector:latest',
+        'ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.159.0',
       ),
       essential: true,
+      // Upstream reads --config; load the inlined pipeline from an env var via
+      // the `env:` config URI (no baked or mounted config file needed).
+      command: ['--config=env:OTEL_CONFIG'],
       environment: {
-        // Inlined collector pipeline (OTLP receivers -> CloudWatch OTLP export).
-        AOT_CONFIG_CONTENT: collectorConfig,
-        AWS_REGION: 'us-east-1',
+        OTEL_CONFIG: collectorConfig,
+        // sigv4auth uses the default AWS credential chain — on Fargate that's
+        // the task-role creds from the ECS container credentials endpoint.
+        AWS_REGION: this.region,
       },
       logging: ecs.LogDrivers.awsLogs({
         streamPrefix: 'collector',
@@ -294,6 +304,11 @@ export class FiveHundredBitsStack extends Stack {
     new CfnOutput(this, 'LogGroupName', {
       value: logGroup.logGroupName,
       description: 'CloudWatch Logs group for both containers',
+    });
+
+    new CfnOutput(this, 'FaultParameterName', {
+      value: faultParam.parameterName,
+      description: 'SSM parameter the app polls for the Act 4 fault flag',
     });
   }
 }

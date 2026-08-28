@@ -1,7 +1,8 @@
 # 500 Bits to Impact — Demo Runbook
 
-Region: **us-east-1**. Total: ~60 min, demo-heavy. This runbook is written so an
-SA who has never seen the repo can deliver the session end to end.
+Region: **us-east-1 by default** — not a platform requirement (see the region
+note below). Total: ~60 min, demo-heavy. This runbook is written so an SA who has
+never seen the repo can deliver the session end to end.
 
 > **New here? Read these first (10 min):** [`README.md`](../README.md) for the
 > prerequisites table and deploy tiers, and [`SPEC.md`](../SPEC.md) for the
@@ -9,9 +10,18 @@ SA who has never seen the repo can deliver the session end to end.
 > [`deck/outline.md`](../deck/outline.md); the presentable deck is
 > `deck/index.html` (arrow keys to nav, `F` fullscreen).
 
+> **Region:** the repo *defaults* to **us-east-1** (that's where the reference
+> "Olympus" Agent Space lives), but this is **not** a platform requirement.
+> CloudWatch OTLP metrics + PromQL and the DevOps Agent are multi-region — run
+> this in **any region that offers both**. To relocate, deploy with
+> `-c region=<region>` (or set `CDK_DEFAULT_REGION`) and use a DevOps Agent Space
+> in that region; the app region, container env, metrics endpoint, and
+> `sigv4auth` region all follow automatically. The commands below use us-east-1
+> as the concrete default.
+
 ## What you're demoing (one breath)
 We follow a **single OpenTelemetry metric observation** from the line of code
-that emits it → through an ADOT sidecar → into the **CloudWatch OTel metric
+that emits it → through an OpenTelemetry Collector sidecar → into the **CloudWatch OTel metric
 store** → query it back with **PromQL in Query Studio** → break the service on
 purpose → and hand the breach to the **Amazon DevOps Agent** for root cause.
 The "~500 bits" is a storytelling hook, not a spec constant — own that framing.
@@ -25,9 +35,9 @@ The "~500 bits" is a storytelling hook, not a spec constant — own that framing
   builds **linux/arm64** (Fargate runs ARM64/Graviton). On Apple Silicon this is
   native; on Intel it cross-builds (slower). If Docker isn't running, deploy fails.
 - **Node 18+ and npm**, and the **AWS CDK** (used via `npx`, no global install needed).
-- **AWS credentials for us-east-1** with permission to deploy (ECS, EC2/VPC, IAM,
-  Logs, SSM, Secrets Manager, CloudWatch). Confirm with
-  `aws sts get-caller-identity`.
+- **AWS credentials for your target region** (this repo defaults to us-east-1)
+  with permission to deploy (ECS, EC2/VPC, IAM, Logs, SSM, Secrets Manager,
+  CloudWatch). Confirm with `aws sts get-caller-identity`.
 - **CDK bootstrapped** in this account/Region: `npx cdk bootstrap aws://<acct>/us-east-1`
   (one-time; skip if already done).
 - **One free VPC slot** — the stack creates its own VPC (default limit is 5/Region).
@@ -35,9 +45,9 @@ The "~500 bits" is a storytelling hook, not a spec constant — own that framing
   if you prefer a terminal over Query Studio. Not required.
 
 **For Act 4 (the DevOps Agent finale):**
-- A **DevOps Agent Space in us-east-1** with **this account associated** and a
-  valid **monitor role** (the reference environment is the "Olympus" space —
-  substitute your own). Base Acts 0–3 need none of this.
+- A **DevOps Agent Space in your chosen region** with **this account associated**
+  and a valid **monitor role** (the reference environment is the "Olympus" space
+  in us-east-1 — substitute your own). Base Acts 0–3 need none of this.
 - *(Auto-trigger variant only)* a **generic webhook** registered in that Space
   (URL + HMAC secret) — see the Act 4 variant below.
 
@@ -117,7 +127,7 @@ Studio, (b) a terminal in `demo/`. Zoom the browser/terminal fonts up now.
   keys on) and that units are seconds on the histogram (foreshadow the p95 beat).
 
 ## Act 2 — Journey (8 min) · `otel/collector.yaml` + console
-- **Do:** Trace the path: app → OTLP/gRPC `localhost:4317` → ADOT sidecar →
+- **Do:** Trace the path: app → OTLP/gRPC `localhost:4317` → OTel Collector sidecar →
   `otlphttp` + `sigv4auth` → `https://monitoring.us-east-1.amazonaws.com/v1/metrics`.
   Show the sidecar in the CDK task definition (one task = app + collector) and the
   `batch` processor in `collector.yaml`. Then in **Query Studio** run
@@ -230,7 +240,7 @@ the alarm drove the investigation."* Then open it and narrate root cause.
   **preview** — price accordingly). Call to action: `cdk deploy` this repo, swap
   `checkout-service` for your service.
 - **Emphasize:** Land the **repeatable pattern**, not a product pitch —
-  OTel SDK → ADOT SigV4 → CloudWatch OTel store → PromQL (query + alarm) → agent
+  OTel SDK → OTel Collector (SigV4) → CloudWatch OTel store → PromQL (query + alarm) → agent
   for RCA. This is an internal reference implementation.
 
 ## Q&A buffer (4 min)
@@ -271,5 +281,5 @@ cd ../cdk && npx cdk destroy
 - **Agent Space:** dismiss/close any **test investigations** you created so they
   don't clutter the space (and any smoke-test webhook you registered, if temporary).
 - **Verify clean:** `aws cloudformation describe-stacks --stack-name FiveHundredBitsStack
-  --region us-east-1` should return "does not exist"; the `/ecs/500-bits-to-impact`
-  log group should be gone.
+  --region us-east-1` should return "does not exist"; the stack's log group
+  (auto-named `/ecs/FiveHundredBitsStack-*`) is removed with the stack.

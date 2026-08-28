@@ -1,10 +1,15 @@
 # 500 Bits to Impact — Canonical Demo Contract
 
-This file is the single source of truth. Every component (Go app, ADOT collector,
-PromQL queries, alarm, CDK, deck) MUST match the names, ports, and endpoints here.
+This file is the single source of truth. Every component (Go app, OpenTelemetry
+Collector, PromQL queries, alarm, CDK, deck) MUST match the names, ports, and
+endpoints here.
 
 ## Region / accounts
-- **Region: `us-east-1`** (DevOps Agent "Olympus" Agent Space lives here).
+- **Region: defaults to `us-east-1`** (the reference DevOps Agent "Olympus" Agent
+  Space lives here) — **not** a platform requirement. Override at deploy with
+  `-c region=<region>` (or `CDK_DEFAULT_REGION`); the app region, container env,
+  metrics endpoint, and `sigv4auth` region all follow it. Run in any region that
+  offers CloudWatch OTLP metrics + a DevOps Agent Space.
 - Query the OTLP store via **CloudWatch Query Studio** (default). If using the
   optional cw-otel-cli, always pass `--region us-east-1`.
 
@@ -22,9 +27,10 @@ PromQL queries, alarm, CDK, deck) MUST match the names, ports, and endpoints her
 (Underscore names chosen so PromQL selectors need no quoting.)
 
 ## Ingest path
-- App exports OTLP/gRPC → ADOT collector sidecar at `localhost:4317`.
-- Collector `otlphttp` exporter → `https://monitoring.us-east-1.amazonaws.com/v1/metrics`
-  with `sigv4auth` extension (service `monitoring`, region `us-east-1`).
+- App exports OTLP/gRPC → OpenTelemetry Collector sidecar at `localhost:4317`.
+- Collector `otlphttp` exporter → `https://monitoring.<region>.amazonaws.com/v1/metrics`
+  with `sigv4auth` extension (service `monitoring`, region = deploy region). The
+  CDK substitutes the deploy region into the collector config at synth.
 - Task role needs IAM `cloudwatch:PutMetricData` (Resource `*`).
 
 ## Query path (Act 3)
@@ -100,5 +106,7 @@ checkout-error-rate-slo (ALARM)
 
 ## Container images
 - App: multi-stage Go build (distroless/static final).
-- Collector sidecar: `public.ecr.aws/aws-observability/aws-otel-collector:latest`
-  with config mounted/passed; task def puts both in one Fargate task.
+- Collector sidecar: upstream OpenTelemetry Collector (contrib) —
+  `ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.159.0`
+  (pinned; ships otlphttp + sigv4auth). Config passed via `OTEL_CONFIG` env +
+  `--config=env:OTEL_CONFIG`. Task def puts both containers in one Fargate task.

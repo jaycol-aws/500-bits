@@ -11,17 +11,22 @@ import { FiveHundredBitsStack } from '../lib/five-hundred-bits-stack';
 
 const app = new cdk.App();
 
+// Region defaults to us-east-1 (where the reference Agent Space lives). Override
+// with `-c region=<region>` or the ambient CDK_DEFAULT_REGION to run anywhere
+// CloudWatch OTLP metrics + a DevOps Agent Space are available.
+const region =
+  app.node.tryGetContext('region') || process.env.CDK_DEFAULT_REGION || 'us-east-1';
+
 new FiveHundredBitsStack(app, 'FiveHundredBitsStack', {
-  // SPEC.md: Region is us-east-1. Pin it explicitly rather than relying on
-  // the ambient CLI/profile region so image assets and the metrics endpoint
-  // always resolve to the same region.
+  // Pin the resolved region explicitly so image assets, the metrics endpoint,
+  // and the SigV4 signer all line up.
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
-    region: 'us-east-1',
+    region,
   },
   description:
-    "500 Bits to Impact demo: Fargate checkout-service with an ADOT collector " +
-    "sidecar exporting OTLP metrics to CloudWatch (us-east-1).",
+    "500 Bits to Impact demo: Fargate checkout-service with an OpenTelemetry " +
+    "Collector sidecar exporting OTLP metrics to CloudWatch.",
 });
 
 app.synth();

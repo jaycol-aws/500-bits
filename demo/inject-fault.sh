@@ -12,7 +12,20 @@
 set -euo pipefail
 
 REGION="${REGION:-us-east-1}"
-PARAM="${FAULT_PARAM:-/500bits/fault}"
+STACK="${STACK:-FiveHundredBitsStack}"
+# The SSM parameter is auto-named by CloudFormation. Resolve it from the stack
+# output (override with FAULT_PARAM=... if you already know the name).
+PARAM="${FAULT_PARAM:-}"
+if [[ -z "$PARAM" ]]; then
+  PARAM=$(aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" \
+    --query "Stacks[0].Outputs[?OutputKey=='FaultParameterName'].OutputValue" \
+    --output text 2>/dev/null || true)
+fi
+if [[ -z "$PARAM" || "$PARAM" == "None" ]]; then
+  echo "ERROR: could not resolve the fault SSM parameter. Set FAULT_PARAM=<name>" >&2
+  echo "       or STACK=<stack> (region $REGION), and ensure the stack is deployed." >&2
+  exit 1
+fi
 MODE="${1:-error}"
 RATE="${2:-0.6}"
 
