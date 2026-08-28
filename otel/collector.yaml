@@ -25,7 +25,7 @@ processors:
     timeout: 10s
 
 exporters:
-  otlphttp:
+  otlp_http:
     tls:
       insecure: false
     # CloudWatch OTLP metrics endpoint (SPEC.md: us-east-1).
@@ -44,4 +44,4 @@ service:
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
