@@ -48,7 +48,28 @@ listener, no load balancer, no shell in the image.
 | `demo/` | `RUNBOOK.md`, `promql-queries.md`, `inject-fault.sh`, `create-alarm.sh` |
 | `deck/outline.md` | Minimal builder-audience slide outline |
 
+## Prerequisites
+
+The **runtime and the querying are fully self-service** (`cdk deploy` + Query
+Studio). The **Amazon DevOps Agent side is a manual prerequisite** — the CDK
+does **not** (and cannot) create a DevOps Agent Space, its account association,
+its monitor role, or its webhook. There is no CloudFormation/CDK resource for
+those; you set the space up once in the console and then *pass its webhook
+credentials into* the CDK.
+
+| To run… | You need | Set up how |
+|---|---|---|
+| **Acts 0–3 + the alarm** (deploy, query, alarm breaches) | Just an AWS account (us-east-1) with CDK bootstrapped | `cdk deploy` — nothing else |
+| **Act 4 manual hand-off** ("give me an overview of my recent alarms") | A **pre-existing DevOps Agent Space** with this account associated + a valid monitor role | One-time in the DevOps Agent console |
+| **Act 4 auto-trigger** (alarm breach starts the investigation) | The space above **plus** a **generic webhook** registered in it (URL + HMAC secret) | Console → Agent Space → **Associations → MCP Servers → register webhook**; copy the URL + secret (shown once) |
+
+> The base demo requires **no** Agent Space. Only Act 4 does. Nothing in this
+> repo provisions the space — supply it (and, for auto-trigger, its webhook)
+> as described below.
+
 ## Quick start
+
+### Base demo (Acts 0–3, no DevOps Agent Space needed)
 
 ```bash
 cd cdk && npm install && npm run build && npx cdk deploy    # region us-east-1
@@ -57,7 +78,43 @@ Wait ~2-3 min, then verify the metrics landed in **CloudWatch Query Studio**
 (Console → CloudWatch → Metrics → Query → PromQL → run `checkout_requests_total`).
 *(Optional: `cwpromql metrics --filter checkout --region us-east-1` if you have
 the [cw-otel-cli](https://github.com/lewinkedrs/cw-otel-cli) CLI installed.)*
-Then follow `demo/RUNBOOK.md`.
+Stage the PromQL alarm with `cd demo && ./create-alarm.sh`, then follow
+`demo/RUNBOOK.md`.
+
+### Act 4 — manual hand-off (needs a pre-existing Agent Space)
+
+No extra deploy flags. You just need a DevOps Agent Space that already has this
+account associated with a valid monitor role. During Act 4 you ask the agent in
+that space (e.g. *"give me an overview of my recent alarms"*) to pick up the
+breached `checkout-error-rate-slo` alarm. **The Space is identified by which
+one you open in the console — it is not passed to the CDK.**
+
+### Act 4 — auto-trigger (needs the Space *and* its webhook, passed to the CDK)
+
+Only the auto-trigger path takes values from the Agent Space. Register a generic
+webhook in the Space (Associations → MCP Servers), then pass the URL + HMAC
+secret to CDK as **NoEcho** CloudFormation parameters — they never touch source
+control or the synthesized template (CDK stores them in Secrets Manager and the
+template holds only a `{Ref}`):
+
+```bash
+cd cdk
+npx cdk deploy \
+  -c enableAutoTrigger=true \
+  --parameters WebhookUrl='https://event-ai.us-east-1.api.aws/webhook/generic/<id>' \
+  --parameters WebhookSecret='<hmac-secret-shown-once>'
+```
+
+Equivalent helper: `cd demo && WEBHOOK_URL=… WEBHOOK_SECRET=… ./deploy-auto-trigger.sh`.
+
+Notes:
+- `enableAutoTrigger` is a **CDK context flag** (`-c`), so the whole auto-trigger
+  construct (EventBridge rule + Lambda + DynamoDB cooldown) is only synthesized
+  when you opt in. Plain `cdk deploy` never references a webhook.
+- `WebhookUrl` / `WebhookSecret` are **CloudFormation parameters** (`--parameters`),
+  marked `NoEcho`. Pass them on every `cdk deploy` of the auto-trigger stack.
+- The Agent **Space itself is never a CDK input** — only the webhook it issues is.
+  There is no space ID/ARN parameter anywhere in this repo.
 
 ## Metrics
 
