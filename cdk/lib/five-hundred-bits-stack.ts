@@ -8,6 +8,7 @@ import {
   CfnParameter,
   SecretValue,
   RemovalPolicy,
+  Tags,
 } from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
@@ -22,7 +23,7 @@ import { DevOpsAgentAutoTrigger } from './devops-auto-trigger';
  * FiveHundredBitsStack
  *
  * Provisions the runtime for the "500 Bits to Impact" demo:
- *   - a VPC (2 AZs, single NAT gateway)
+ *   - a dedicated VPC (2 AZs, public subnets only, no NAT gateway)
  *   - an ECS cluster
  *   - a single Fargate task running TWO containers:
  *       1. the "checkout-service" app (built from ../app) on port 8080
@@ -38,31 +39,58 @@ export class FiveHundredBitsStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
+    // Tag every resource in the stack for cost tracking / ownership.
+    Tags.of(this).add('project', '500-bits-to-impact');
+    Tags.of(this).add('environment', 'demo');
+
     // ---------------------------------------------------------------------
-    // Networking
+    // Networking — dedicated VPC (self-contained, no external references)
     // ---------------------------------------------------------------------
-    // The account is at its VPC limit in us-east-1, so we REUSE the default
-    // VPC rather than creating one. The task runs in a public subnet with a
-    // public IP (for ECR image pulls + the CloudWatch OTLP endpoint); its
-    // security group opens NO inbound ports, so there is no inbound exposure.
-    const vpc = ec2.Vpc.fromLookup(this, 'Vpc', { isDefault: true });
+    // We create our OWN VPC rather than reusing the account's default VPC.
+    // Reasons:
+    //   1. Self-contained IaC — the stack owns every resource it references,
+    //      so `cdk deploy` works in any bootstrapped account with no reliance
+    //      on a pre-existing default VPC or a cached `cdk.context.json` lookup.
+    //   2. Avoids CloudFormation pre-deployment ResourceExistenceCheck errors
+    //      that can flag looked-up (external) subnet/VPC IDs.
+    //   3. Clean teardown — `cdk destroy` removes the whole network.
+    //
+    // PUBLIC-only, natGateways: 0 keeps it cheap: the Fargate task runs in a
+    // public subnet with a public IP for egress (ECR pulls + the CloudWatch
+    // OTLP endpoint). Its security group opens NO inbound ports, so there is
+    // no inbound exposure — same posture as before, now fully owned.
+    const vpc = new ec2.Vpc(this, 'Vpc', {
+      maxAzs: 2,
+      natGateways: 0,
+      ipAddresses: ec2.IpAddresses.cidr('10.42.0.0/16'),
+      subnetConfiguration: [
+        {
+          name: 'Public',
+          subnetType: ec2.SubnetType.PUBLIC,
+          cidrMask: 24,
+        },
+      ],
+    });
 
     // ---------------------------------------------------------------------
     // ECS cluster
     // ---------------------------------------------------------------------
     const cluster = new ecs.Cluster(this, 'Cluster', {
       vpc,
-      containerInsights: true,
+      containerInsightsV2: ecs.ContainerInsights.ENABLED,
     });
 
     // ---------------------------------------------------------------------
     // Shared log group for both containers (awslogs driver)
     // ---------------------------------------------------------------------
     // SPEC.md fixes the log group name; ONE_WEEK retention keeps demo logs
-    // cheap and disposable.
+    // cheap and disposable. DESTROY removal policy ensures the log group is
+    // deleted on stack teardown/rollback rather than orphaned — otherwise the
+    // fixed name collides (NAME_CONFLICT) on the next create.
     const logGroup = new logs.LogGroup(this, 'LogGroup', {
       logGroupName: '/ecs/500-bits-to-impact',
       retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: RemovalPolicy.DESTROY,
     });
 
     // ---------------------------------------------------------------------
@@ -179,15 +207,21 @@ export class FiveHundredBitsStack extends Stack {
     // ---------------------------------------------------------------------
     // Fargate service
     // ---------------------------------------------------------------------
-    // awsvpc networking is implicit for Fargate. The default VPC has only
-    // public subnets, so we place the task there with a public IP for egress
-    // (ECR pulls + CloudWatch OTLP endpoint). No inbound ports are opened.
+    // awsvpc networking is implicit for Fargate. We place the task in the
+    // VPC's public subnets with a public IP for egress (ECR pulls + the
+    // CloudWatch OTLP endpoint). No inbound ports are opened.
     const service = new ecs.FargateService(this, 'Service', {
       cluster,
       taskDefinition,
       desiredCount: 1,
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
       assignPublicIp: true,
+      // Single-task demo: allow the running task to drop to 0 during a
+      // deployment so a replacement can start without needing 2x capacity.
+      minHealthyPercent: 0,
+      // Fail (and roll back) fast if a new task can't reach steady state,
+      // instead of the default ~3h wait.
+      circuitBreaker: { rollback: true },
     });
 
     // ---------------------------------------------------------------------

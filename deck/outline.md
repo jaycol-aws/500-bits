@@ -37,7 +37,7 @@
   - **Go app on ECS Fargate** (`checkout-service`, port 8080) records `checkout_requests_total` / `checkout_request_duration_seconds`
   - → **ADOT collector sidecar** (same task): OTLP/gRPC in at `localhost:4317` → `otlphttp` exporter w/ `sigv4auth`
   - → **CloudWatch OTel metric store** via `https://monitoring.us-east-1.amazonaws.com/v1/metrics`
-  - → **PromQL query API** (`cwpromql query … --region us-east-1`) **+ PromQL alarm** (`checkout-error-rate-slo`)
+  - → **PromQL query API** — query in **CloudWatch Query Studio** (optionally `cwpromql`) **+ PromQL alarm** (`checkout-error-rate-slo`)
   - → **Amazon DevOps Agent** (Olympus Agent Space, us-east-1) for root-cause on breach
 - Callout: one Fargate task = app + collector; task role needs `cloudwatch:PutMetricData`
 
@@ -50,7 +50,7 @@
 - **Framing — 4m:** why one observation; the honest byte math
 - **Birth — 7m:** app records it; instruments, attributes, OTLP/gRPC to sidecar
 - **Journey — 8m:** ADOT `sigv4auth` → CloudWatch OTLP endpoint; confirm ingest
-- **Interrogation — 12m:** query it back with PromQL via `cwpromql` (rate, error ratio, latency)
+- **Interrogation — 12m:** query it back with PromQL in Query Studio (rate, error ratio, latency); `cwpromql` optional
 - **Incident — 18m:** inject fault (`/admin/fault`), watch `checkout-error-rate-slo` fire, hand to DevOps Agent
 - **Impact — 7m:** cost levers, activation takeaways, the repeatable pattern
 - **Q&A — 4m**

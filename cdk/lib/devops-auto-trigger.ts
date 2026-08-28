@@ -89,7 +89,13 @@ export class DevOpsAgentAutoTrigger extends Construct {
       ),
       timeout: Duration.seconds(30),
       memorySize: 128,
-      logRetention: logs.RetentionDays.ONE_WEEK,
+      // Explicit log group (retention + clean teardown) instead of the
+      // deprecated `logRetention` prop, which also provisions an extra
+      // custom-resource Lambda just to set retention.
+      logGroup: new logs.LogGroup(this, 'FnLogGroup', {
+        retention: logs.RetentionDays.ONE_WEEK,
+        removalPolicy: RemovalPolicy.DESTROY,
+      }),
       environment: {
         DEDUP_TABLE: this.dedupTable.tableName,
         WEBHOOK_SECRET_ARN: props.webhookSecret.secretArn,

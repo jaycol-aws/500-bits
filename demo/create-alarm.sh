@@ -13,10 +13,16 @@ ALARM_NAME="${ALARM_NAME:-checkout-error-rate-slo}"
 QUERY='sum(rate({__name__="checkout_requests_total", outcome="error"}[1m])) / sum(rate({__name__="checkout_requests_total"}[1m])) > 0.2'
 
 echo "== Verifying metrics have landed in the OTLP store ($REGION) =="
-cwpromql metrics --filter checkout --region "$REGION" || {
-  echo "No checkout_* metrics yet. Wait 1-2 min after the service starts." >&2
-  exit 1
-}
+if command -v cwpromql >/dev/null 2>&1; then
+  cwpromql metrics --filter checkout --region "$REGION" || {
+    echo "No checkout_* metrics yet. Wait 1-2 min after the service starts." >&2
+    exit 1
+  }
+else
+  echo "cwpromql not installed — skipping the metric precheck (it's optional)."
+  echo "Verify in CloudWatch Query Studio instead: Console -> CloudWatch ->"
+  echo "Metrics -> Query -> PromQL -> run 'checkout_requests_total'."
+fi
 
 echo "== Creating PromQL alarm: $ALARM_NAME =="
 aws cloudwatch put-metric-alarm \

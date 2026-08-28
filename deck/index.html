@@ -129,7 +129,7 @@
       <div class="arrow">→</div>
       <div class="node"><div class="t">CloudWatch OTel store</div><div class="d">monitoring.us-east-1<br>/v1/metrics</div></div>
       <div class="arrow">→</div>
-      <div class="node"><div class="t">PromQL</div><div class="d">cwpromql query<br>+ PromQL alarm</div></div>
+      <div class="node"><div class="t">PromQL</div><div class="d">Query Studio<br>+ PromQL alarm</div></div>
       <div class="arrow">→</div>
       <div class="node"><div class="t">DevOps Agent</div><div class="d">Olympus space<br>root-cause on breach</div></div>
     </div>
@@ -144,7 +144,7 @@
     <div class="runrow"><span class="n">0 · 4m</span><span><span class="t">Framing</span> — why one observation; the honest byte math</span><span class="m">slides</span></div>
     <div class="runrow"><span class="n">1 · 7m</span><span><span class="t">Birth</span> — app records it; instruments, attrs, OTLP/gRPC</span><span class="m">main.go</span></div>
     <div class="runrow"><span class="n">2 · 8m</span><span><span class="t">Journey</span> — ADOT sigv4auth → CloudWatch OTLP; confirm ingest</span><span class="m">collector.yaml</span></div>
-    <div class="runrow"><span class="n">3 · 12m</span><span><span class="t">Interrogation</span> — query it back: rate, error ratio, p95</span><span class="m">cwpromql</span></div>
+    <div class="runrow"><span class="n">3 · 12m</span><span><span class="t">Interrogation</span> — query it back: rate, error ratio, p95</span><span class="m">Query Studio</span></div>
     <div class="runrow"><span class="n">4 · 18m</span><span><span class="t bad">Incident</span> — inject fault, alarm fires, agent finds root cause</span><span class="m">the payoff</span></div>
     <div class="runrow"><span class="n">5 · 7m</span><span><span class="t">Impact</span> — cost levers, activation, the repeatable pattern</span><span class="m">slides</span></div>
     <div class="note"><b>Speaker (optional, &lt;1m):</b> Show only if the room wants a map — otherwise skip to keep momentum. If you show it, point at Act&nbsp;4 and say "this is where we're headed." Protect the Incident's 18 minutes: if you're behind, cut Interrogation queries, never Act&nbsp;4. Total ~54m content + Q&amp;A.</div>
@@ -156,10 +156,10 @@
     <h2>Break it on purpose</h2>
     <div class="cols">
       <div>
-        <div class="codeblock"><span class="c"># healthy: error ratio returns no series</span>
-cwq query '<span class="s">sum(rate({__name__="checkout_requests_total",
+        <div class="codeblock"><span class="c"># healthy: error ratio returns no series (Query Studio, PromQL)</span>
+<span class="s">sum(rate({__name__="checkout_requests_total",
   outcome="error"}[1m]))
- / sum(rate({__name__="checkout_requests_total"}[1m]))</span>'
+ / sum(rate({__name__="checkout_requests_total"}[1m]))</span>
 
 <span class="c"># inject the incident</span>
 ./inject-fault.sh <span class="o">error</span> 0.6
