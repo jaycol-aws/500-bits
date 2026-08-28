@@ -61,6 +61,24 @@ sum(rate({__name__="checkout_requests_total", outcome="error"}[1m])) / sum(rate(
 - After `inject-fault.sh error 0.6`: returns a value that climbs past `0.2`
   → the PromQL alarm (threshold `> 0.2`) breaches.
 
+## Root cause — the payments-service dependency (Act 4 corroboration)
+These are the signals the DevOps Agent correlates to; run them to back up its
+RCA on screen. The checkout errors are a *downstream consequence* of the
+`payments-service` dependency degrading.
+```promql
+# Dependency error rate — the upstream cause, spiking in lockstep with checkout
+sum(rate({__name__="dependency_requests_total", dependency="payments-service", outcome="error"}[1m])) / sum(rate({__name__="dependency_requests_total", dependency="payments-service"}[1m]))
+
+# Dependency p95 latency — elevated when the fault is latency-driven
+histogram_quantile(0.95, rate(dependency_request_duration_seconds[5m]))
+
+# "What changed": errors are attributed to the new dependency version (2.5.0)
+sum by ("dependency.version")(rate({__name__="dependency_requests_total", outcome="error"}[5m]))
+```
+- The `dependency.version` split shows errors appearing **only** on `2.5.0` — the
+  incident lines up with the payments-service "deploy" (also logged as
+  `event=deploy ... version=2.5.0`), giving the agent a natural root cause.
+
 ---
 
 ## Optional CLI aside: `cwpromql`

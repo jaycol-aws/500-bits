@@ -161,6 +161,20 @@ Add each query as a new line so the graph builds up live.
   (never cut Act 4).
 
 ## Act 4 — Incident (18 min) · the payoff
+
+> **How the incident is modeled (operator context):** checkout calls a simulated
+> `payments-service` dependency. `inject-fault.sh error 0.6` flips an SSM flag the
+> app polls; the app then makes payments-service return **503s**, tags its metrics
+> `dependency.version=2.5.0` (healthy = `2.4.1`), and logs a one-time
+> `event=deploy … version=2.5.0` marker. Checkout fails **downstream** of that, so
+> the telemetry tells a natural dependency-regression story — *checkout 503s ←
+> payments-service 503s ← the v2.5.0 deploy* — instead of a bare injected error.
+> (`latency` mode instead makes payments slow enough to trip checkout's 1s client
+> timeout, driving errors + high p95.) **Honest caveat:** the *trigger* is still an
+> operator-initiated SSM flag, so a thorough agent may observe the change was
+> intentional — an inherent tell of any injected demo. What we've made natural is
+> the **investigation surface** (the causal chain + logs the agent reasons over).
+
 1. **Do:** In **Query Studio**, show the alarm query returns **no series**
    (healthy — numerator empty):
    ```promql
@@ -173,9 +187,10 @@ Add each query as a new line so the graph builds up live.
    ```bash
    cd demo && ./inject-fault.sh error 0.6
    ```
-   **Say:** "I'm flipping an SSM parameter the app polls — 60% of checkouts now
-   return 500. No inbound access, no redeploy; the running service just starts
-   failing."
+   **Say:** "I'm flipping an SSM parameter the app polls — under the hood the
+   `payments-service` dependency starts returning 503s, so checkouts fail
+   downstream. No inbound access, no redeploy; the running service just starts
+   failing." *(Don't dwell on the mechanism — the point is what the agent finds.)*
 3. **Do:** Within ~1–2 min, re-run the query (now a breaching series climbing past
    0.2) and show `checkout-error-rate-slo` flip to **ALARM** in the console.
    **Say:** "There's the breach — and the PromQL alarm firing on it. That alarm is
@@ -187,12 +202,18 @@ Add each query as a new line so the graph builds up live.
    > "investigate the checkout-error-rate-slo alarm and find the root cause"
 5. **Say (while it runs):** "The agent is read-only by design — it investigates,
    you remediate. Give it a minute or two; it's correlating the metric, the
-   alarm, and the service context." Narrate the result: error-rate spike on
-   `checkout-service`, `outcome="error"` on `/checkout`.
+   alarm, and the service's dependencies." **This is the natural-incident payoff:**
+   the agent should trace checkout errors **down to the `payments-service`
+   dependency** (elevated 503s / latency) and tie the onset to the
+   `payments-service` **v2.5.0 deploy** — a real root cause, not "someone injected
+   a fault." Corroborate live with the dependency queries in
+   `demo/promql-queries.md` ("Root cause — the payments-service dependency"):
+   dependency error rate spiking, and errors appearing only on `dependency.version=2.5.0`.
    **Expectation-setting:** an investigation typically takes **a few minutes**;
    keep talking, don't stare at a spinner. If it stalls, use the fallback
    screenshot (below).
-6. **Do — recover:** `./inject-fault.sh none` (error rate falls, alarm returns to OK).
+6. **Do — recover:** `./inject-fault.sh none` (payments-service returns to
+   `2.4.1`, error rate falls, alarm returns to OK).
 
 ### Act 4 variant — fully automated (validated: HTTP 200 live)
 Instead of asking the agent by hand, let the alarm breach kick off the

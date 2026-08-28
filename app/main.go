@@ -5,13 +5,22 @@
 // the demo, and exposes /admin/fault to inject an error or latency incident.
 //
 // Metrics (OTel -> OTLP/gRPC -> OpenTelemetry Collector sidecar -> CloudWatch OTLP endpoint):
-//   checkout_requests_total          Counter   attrs: outcome, route
+//   checkout_requests_total           Counter   attrs: outcome, route
 //   checkout_request_duration_seconds Histogram attrs: route
+//   dependency_requests_total         Counter   attrs: dependency, dependency.version, outcome
+//   dependency_request_duration_seconds Histogram attrs: dependency, dependency.version
+//
+// Incident model: checkout calls a simulated "payments-service" dependency.
+// A fault degrades the DEPENDENCY (errors or latency), and checkout fails as a
+// downstream consequence (upstream 503 or client timeout) — so an investigation
+// finds a real causal chain (checkout errors <- payments latency/5xx <- a
+// payments-service "deploy") instead of a naked, obviously-injected error rate.
 package main
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
@@ -34,6 +43,16 @@ import (
 
 const route = "/checkout"
 
+// Simulated downstream dependency. Its "version" flips on the (bad) deploy that
+// coincides with the incident, giving an investigation a natural "what changed"
+// correlation: errors/latency begin exactly when payments-service ships v2.5.0.
+const (
+	depName           = "payments-service"
+	depVersionHealthy = "2.4.1"
+	depVersionFaulted = "2.5.0"
+	depCallBudget     = 1000 * time.Millisecond // checkout gives up on payments after 1s
+)
+
 // ---- fault state (toggled live via /admin/fault) ------------------------
 
 type faultState struct {
@@ -50,8 +69,19 @@ func (f *faultState) get() (string, float64) {
 
 func (f *faultState) set(mode string, rate float64) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
+	was := f.mode
 	f.mode, f.rate = mode, rate
+	f.mu.Unlock()
+	// Emit a one-time "deployment" marker on the none -> active transition so an
+	// investigation can correlate incident onset with a payments-service deploy.
+	if was == "none" && mode != "none" {
+		log.Printf("event=deploy dependency=%s version=%s msg=\"payments-service deployment completed\"",
+			depName, depVersionFaulted)
+	}
+	if was != "none" && mode == "none" {
+		log.Printf("event=deploy dependency=%s version=%s msg=\"payments-service rolled back to last-known-good\"",
+			depName, depVersionHealthy)
+	}
 }
 
 var faults = &faultState{mode: "none", rate: 0}
@@ -59,8 +89,10 @@ var faults = &faultState{mode: "none", rate: 0}
 // ---- metric instruments -------------------------------------------------
 
 var (
-	requests metric.Int64Counter
-	latency  metric.Float64Histogram
+	requests    metric.Int64Counter
+	latency     metric.Float64Histogram
+	depRequests metric.Int64Counter
+	depLatency  metric.Float64Histogram
 )
 
 func initMeter(ctx context.Context) (func(context.Context) error, error) {
@@ -111,6 +143,13 @@ func initMeter(ctx context.Context) (func(context.Context) error, error) {
 				Boundaries: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
 			}},
 		)),
+		// Same seconds-scale buckets for the dependency latency histogram.
+		sdkmetric.WithView(sdkmetric.NewView(
+			sdkmetric.Instrument{Name: "dependency_request_duration_seconds"},
+			sdkmetric.Stream{Aggregation: sdkmetric.AggregationExplicitBucketHistogram{
+				Boundaries: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+			}},
+		)),
 		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exp,
 			sdkmetric.WithInterval(interval))),
 	)
@@ -129,6 +168,18 @@ func initMeter(ctx context.Context) (func(context.Context) error, error) {
 	if err != nil {
 		return nil, err
 	}
+	depRequests, err = meter.Int64Counter("dependency_requests_total",
+		metric.WithDescription("Total downstream dependency calls"),
+		metric.WithUnit("{requests}"))
+	if err != nil {
+		return nil, err
+	}
+	depLatency, err = meter.Float64Histogram("dependency_request_duration_seconds",
+		metric.WithDescription("Downstream dependency call latency"),
+		metric.WithUnit("s"))
+	if err != nil {
+		return nil, err
+	}
 	return provider.Shutdown, nil
 }
 
@@ -143,44 +194,96 @@ func trimScheme(s string) string {
 
 // ---- the one observation: doCheckout ------------------------------------
 
-// doCheckout runs the "work", records one duration observation and one request
-// count observation. THIS is the birth of the ~500 bits we follow all hour.
+// doCheckout runs the "work", calls the payments dependency, and records one
+// duration observation and one request count observation. THIS is the birth of
+// the ~500 bits we follow all hour. When checkout fails it's because the
+// payments-service dependency failed underneath it — a real causal chain.
 func doCheckout(ctx context.Context) error {
+	start := time.Now()
+
+	// Local checkout work: 20-60ms.
+	time.Sleep(time.Duration(20+rand.Intn(40)) * time.Millisecond)
+
+	// Call the payments dependency with a client-side budget. A dependency
+	// error (5xx) or a timeout surfaces as a checkout failure.
+	perr := callPaymentsWithTimeout(ctx, depCallBudget)
+
+	outcome := "success"
+	if perr != nil {
+		outcome = "error"
+	}
+	requests.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("outcome", outcome),
+		attribute.String("route", route),
+	))
+	latency.Record(ctx, time.Since(start).Seconds(),
+		metric.WithAttributes(attribute.String("route", route)))
+
+	if perr != nil {
+		// Honest, quotable log line for the investigation — no "simulated".
+		log.Printf("level=error route=%s msg=\"checkout failed\" upstream=%s cause=%q",
+			route, depName, perr.Error())
+		return perr
+	}
+	return nil
+}
+
+// callPaymentsWithTimeout invokes the dependency but gives up after budget,
+// surfacing a client timeout as the checkout failure (latency-cascade case).
+// The underlying call still completes and records the dependency's true latency.
+func callPaymentsWithTimeout(ctx context.Context, budget time.Duration) error {
+	done := make(chan error, 1)
+	go func() { done <- callPayments(ctx) }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(budget):
+		return fmt.Errorf("context deadline exceeded calling %s after %s", depName, budget)
+	}
+}
+
+// callPayments simulates the downstream payments-service and records its own
+// OTel metrics (labelled with the dependency version). A fault degrades THIS
+// call — errors (5xx) or added latency — which is what ultimately breaks checkout.
+func callPayments(ctx context.Context) error {
 	start := time.Now()
 	mode, rate := faults.get()
 
-	// baseline work: 20-60ms
-	work := 20 + rand.Intn(40)
-	failed := false
+	version := depVersionHealthy
+	if mode != "none" {
+		version = depVersionFaulted
+	}
 
+	// Baseline dependency latency: 5-15ms.
+	work := 5 + rand.Intn(10)
+	var callErr error
 	switch mode {
 	case "latency":
 		if rand.Float64() < rate {
-			work += 800 + rand.Intn(700) // +0.8-1.5s
+			work += 800 + rand.Intn(700) // slow dependency -> checkout may time out
 		}
 	case "error":
 		if rand.Float64() < rate {
-			failed = true
+			callErr = errors.New("payments-service responded HTTP 503 Service Unavailable")
 		}
 	}
 	time.Sleep(time.Duration(work) * time.Millisecond)
 
 	outcome := "success"
-	if failed {
+	if callErr != nil {
 		outcome = "error"
 	}
 	attrs := metric.WithAttributes(
+		attribute.String("dependency", depName),
+		attribute.String("dependency.version", version),
 		attribute.String("outcome", outcome),
-		attribute.String("route", route),
 	)
-	requests.Add(ctx, 1, attrs)
-	latency.Record(ctx, time.Since(start).Seconds(),
-		metric.WithAttributes(attribute.String("route", route)))
-
-	if failed {
-		return errors.New("simulated checkout failure")
-	}
-	return nil
+	depRequests.Add(ctx, 1, attrs)
+	depLatency.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(
+		attribute.String("dependency", depName),
+		attribute.String("dependency.version", version),
+	))
+	return callErr
 }
 
 // ---- HTTP handlers ------------------------------------------------------
