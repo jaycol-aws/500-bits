@@ -79,10 +79,13 @@ export class FiveHundredBitsStack extends Stack {
     // Shared log group for both containers (awslogs driver)
     // ---------------------------------------------------------------------
     // SPEC.md fixes the log group name; ONE_WEEK retention keeps demo logs
-    // cheap and disposable.
+    // cheap and disposable. DESTROY removal policy ensures the log group is
+    // deleted on stack teardown/rollback rather than orphaned — otherwise the
+    // fixed name collides (NAME_CONFLICT) on the next create.
     const logGroup = new logs.LogGroup(this, 'LogGroup', {
       logGroupName: '/ecs/500-bits-to-impact',
       retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: RemovalPolicy.DESTROY,
     });
 
     // ---------------------------------------------------------------------
