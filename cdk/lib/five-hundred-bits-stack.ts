@@ -8,6 +8,7 @@ import {
   CfnParameter,
   SecretValue,
   RemovalPolicy,
+  Tags,
 } from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
@@ -22,7 +23,7 @@ import { DevOpsAgentAutoTrigger } from './devops-auto-trigger';
  * FiveHundredBitsStack
  *
  * Provisions the runtime for the "500 Bits to Impact" demo:
- *   - a VPC (2 AZs, single NAT gateway)
+ *   - a dedicated VPC (2 AZs, public subnets only, no NAT gateway)
  *   - an ECS cluster
  *   - a single Fargate task running TWO containers:
  *       1. the "checkout-service" app (built from ../app) on port 8080
@@ -37,6 +38,10 @@ import { DevOpsAgentAutoTrigger } from './devops-auto-trigger';
 export class FiveHundredBitsStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
+
+    // Tag every resource in the stack for cost tracking / ownership.
+    Tags.of(this).add('project', '500-bits-to-impact');
+    Tags.of(this).add('environment', 'demo');
 
     // ---------------------------------------------------------------------
     // Networking — dedicated VPC (self-contained, no external references)
@@ -72,7 +77,7 @@ export class FiveHundredBitsStack extends Stack {
     // ---------------------------------------------------------------------
     const cluster = new ecs.Cluster(this, 'Cluster', {
       vpc,
-      containerInsights: true,
+      containerInsightsV2: ecs.ContainerInsights.ENABLED,
     });
 
     // ---------------------------------------------------------------------
@@ -211,6 +216,12 @@ export class FiveHundredBitsStack extends Stack {
       desiredCount: 1,
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
       assignPublicIp: true,
+      // Single-task demo: allow the running task to drop to 0 during a
+      // deployment so a replacement can start without needing 2x capacity.
+      minHealthyPercent: 0,
+      // Fail (and roll back) fast if a new task can't reach steady state,
+      // instead of the default ~3h wait.
+      circuitBreaker: { rollback: true },
     });
 
     // ---------------------------------------------------------------------
