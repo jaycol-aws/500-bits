@@ -146,9 +146,9 @@ Notes:
   updated — delete it, then `cdk deploy` again.
 
 ## Notes / caveats
-- CloudWatch OTLP metrics + PromQL is a **preview** capability. PromQL alarms are
-  created via `aws cloudwatch put-metric-alarm --evaluation-criteria PromQLCriteria`
-  (see `demo/create-alarm.sh`); there is no CFN/CDK construct for them yet.
+- PromQL alarms are created via `aws cloudwatch put-metric-alarm
+  --evaluation-criteria PromQLCriteria` (see `demo/create-alarm.sh`); there is no
+  CFN/CDK construct for them yet.
 - OTLP-ingested metrics do **not** appear in classic `list-metrics`/`get-metric-data`
   — query them via PromQL only.
 - Export interval is 15s here for demo responsiveness; 60s is the production standard.
