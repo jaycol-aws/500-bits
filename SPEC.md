@@ -5,7 +5,8 @@ PromQL queries, alarm, CDK, deck) MUST match the names, ports, and endpoints her
 
 ## Region / accounts
 - **Region: `us-east-1`** (DevOps Agent "Olympus" Agent Space lives here).
-- cw-otel-cli usage: always pass `--region us-east-1`.
+- Query the OTLP store via **CloudWatch Query Studio** (default). If using the
+  optional cw-otel-cli, always pass `--region us-east-1`.
 
 ## Service identity (OTel resource attributes)
 - `service.name = checkout-service`
@@ -27,8 +28,10 @@ PromQL queries, alarm, CDK, deck) MUST match the names, ports, and endpoints her
 - Task role needs IAM `cloudwatch:PutMetricData` (Resource `*`).
 
 ## Query path (Act 3)
-- `cwpromql query '<promql>' --region us-east-1` (SigV4 service `monitoring`,
-  host `monitoring.us-east-1.amazonaws.com/api/v1/*`).
+- Default: **CloudWatch Query Studio** (Console → CloudWatch → Metrics → Query →
+  PromQL) against the OTLP store (`monitoring.us-east-1.amazonaws.com/api/v1/*`).
+- Optional CLI: `cwpromql query '<promql>' --region us-east-1` (SigV4 service
+  `monitoring`, same `host/api/v1/*`) — requires installing cw-otel-cli.
 
 ## Fault injection (Act 4)
 - App exposes `GET /admin/fault?mode=none|latency|error&rate=<0..1>`.

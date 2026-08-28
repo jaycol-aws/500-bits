@@ -16,8 +16,12 @@ Region: **us-east-1** (DevOps Agent "Olympus" space). Total: ~60 min, demo-heavy
    ```bash
    export CLUSTER=<ClusterName> SERVICE=<ServiceName>
    aws ecs list-tasks --cluster "$CLUSTER" --service-name "$SERVICE" --region us-east-1
-   cwpromql metrics --filter checkout --region us-east-1   # expect checkout_* names
    ```
+   Then confirm metrics arrived in **CloudWatch Query Studio** (Console →
+   CloudWatch → Metrics → Query → PromQL): run `checkout_requests_total` and
+   expect the `checkout_*` series. *(Optional: if you have the `cwpromql` CLI
+   installed, `cwpromql metrics --filter checkout --region us-east-1` does the
+   same from a terminal.)*
 
 3. **Stage the PromQL alarm** (one-time, fully scriptable — no console step):
    ```bash
@@ -59,26 +63,29 @@ Region: **us-east-1** (DevOps Agent "Olympus" space). Total: ~60 min, demo-heavy
 - Console: CloudWatch → Query Studio, run `checkout_requests_total` to show it arrived.
 
 ## Act 3 — Interrogation (12 min) · `demo/promql-queries.md`
-Live terminal with cw-otel-cli (see the cheat sheet). Key beats:
-```bash
-alias cwq='cwpromql --region us-east-1'
-cwq query 'sum by (outcome)(rate(checkout_requests_total[5m]))'
-cwq query 'histogram_quantile(0.95, rate(checkout_request_duration_seconds[5m]))'
-cwq range 'histogram_quantile(0.95, rate(checkout_request_duration_seconds[5m]))' --since 30m --watch 15s
+Drive this from **CloudWatch Query Studio** (Console → CloudWatch → Metrics →
+Query → PromQL) — nothing to install, same editor from Act 2. Add each query as
+a new line to build the graph live. Key beats:
+```promql
+sum by (outcome)(rate(checkout_requests_total[5m]))
+histogram_quantile(0.95, rate(checkout_request_duration_seconds[5m]))
 ```
 - Show resource attributes surface as `@resource.*` labels (OTel semantics preserved).
+- *(Optional)* prefer a terminal? The same queries run in the `cwpromql` CLI —
+  see the cheat sheet's CLI aside. It's an optional install, not required for the demo.
 
 ## Act 4 — Incident (18 min) · the payoff
-1. Show the alarm query returns **no series** (healthy — no errors):
-   ```bash
-   cwq query 'sum(rate({__name__="checkout_requests_total", outcome="error"}[1m])) / sum(rate({__name__="checkout_requests_total"}[1m]))'
+1. In **Query Studio**, show the alarm query returns **no series** (healthy — no errors):
+   ```promql
+   sum(rate({__name__="checkout_requests_total", outcome="error"}[1m])) / sum(rate({__name__="checkout_requests_total"}[1m]))
    ```
 2. **Inject the incident:**
    ```bash
    cd demo && ./inject-fault.sh error 0.6
    ```
-3. Within ~1–2 min: re-run the query (now returns a breaching series) and show the
-   `checkout-error-rate-slo` alarm flip to **ALARM** in the console.
+3. Within ~1–2 min: re-run the query in Query Studio (now returns a breaching
+   series) and show the `checkout-error-rate-slo` alarm flip to **ALARM** in the
+   console.
 4. **Hand it to the DevOps Agent** (Olympus space):
    > "give me an overview of my recent alarms"
 
@@ -133,7 +140,8 @@ investigation."* Then open the investigation to narrate the root cause.
 
 ## Fallbacks
 - **Metrics not appearing:** OTLP metrics are NOT in `get-metric-data`/`list-metrics`
-  — only via PromQL. Use `cwpromql metrics`. Give it 1–2 min after task start.
+  — only via PromQL. Query them in **Query Studio** (or `cwpromql metrics` if
+  installed). Give it 1–2 min after task start.
 - **Alarm slow to flip:** the `[1m]` window is intentional for speed; if still lagging,
   bump fault rate (`./inject-fault.sh error 0.9`).
 - **DevOps Agent quiet:** ask directly by alarm name; ensure the Olympus space has the

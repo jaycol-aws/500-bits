@@ -10,9 +10,10 @@
 
 A complete, deployable webinar demo: a Go service on **ECS Fargate** emits OTel
 metrics through an **ADOT sidecar** into the **CloudWatch OTLP metric store**
-(`monitoring.us-east-1.amazonaws.com/v1/metrics`), queried with **PromQL** via
-[cw-otel-cli](https://github.com/lewinkedrs/cw-otel-cli), with a **PromQL alarm**
-and an **Amazon DevOps Agent** investigation as the finale.
+(`monitoring.us-east-1.amazonaws.com/v1/metrics`), queried with **PromQL** in
+**CloudWatch Query Studio** (optionally the
+[cw-otel-cli](https://github.com/lewinkedrs/cw-otel-cli) CLI), with a **PromQL
+alarm** and an **Amazon DevOps Agent** investigation as the finale.
 
 ## Architecture
 
@@ -29,7 +30,7 @@ and an **Amazon DevOps Agent** investigation as the finale.
                  ┌─────────────────────┼──────────────────────┐
                  ▼                     ▼                      ▼
          PromQL query API       PromQL alarm          Amazon DevOps Agent
-        (cw-otel-cli, Act 3)  (Act 4 breach)        (Act 4 root cause)
+       (Query Studio, Act 3)  (Act 4 breach)        (Act 4 root cause)
 ```
 
 The service self-drives ~5 rps so telemetry always flows. An incident is injected
@@ -51,9 +52,11 @@ listener, no load balancer, no shell in the image.
 
 ```bash
 cd cdk && npm install && npm run build && npx cdk deploy    # region us-east-1
-# wait ~2-3 min, then:
-cwpromql metrics --filter checkout --region us-east-1
 ```
+Wait ~2-3 min, then verify the metrics landed in **CloudWatch Query Studio**
+(Console → CloudWatch → Metrics → Query → PromQL → run `checkout_requests_total`).
+*(Optional: `cwpromql metrics --filter checkout --region us-east-1` if you have
+the [cw-otel-cli](https://github.com/lewinkedrs/cw-otel-cli) CLI installed.)*
 Then follow `demo/RUNBOOK.md`.
 
 ## Metrics
