@@ -161,6 +161,20 @@ Add each query as a new line so the graph builds up live.
   (never cut Act 4).
 
 ## Act 4 — Incident (18 min) · the payoff
+
+> **How the incident is modeled (operator context):** checkout calls a simulated
+> `payments-service` dependency. `inject-fault.sh error 0.6` flips an SSM flag the
+> app polls; the app then makes payments-service return **503s**, tags its metrics
+> `dependency.version=2.5.0` (healthy = `2.4.1`), and logs a one-time
+> `event=deploy … version=2.5.0` marker. Checkout fails **downstream** of that, so
+> the telemetry tells a natural dependency-regression story — *checkout 503s ←
+> payments-service 503s ← the v2.5.0 deploy* — instead of a bare injected error.
+> (`latency` mode instead makes payments slow enough to trip checkout's 1s client
+> timeout, driving errors + high p95.) **Honest caveat:** the *trigger* is still an
+> operator-initiated SSM flag, so a thorough agent may observe the change was
+> intentional — an inherent tell of any injected demo. What we've made natural is
+> the **investigation surface** (the causal chain + logs the agent reasons over).
+
 1. **Do:** In **Query Studio**, show the alarm query returns **no series**
    (healthy — numerator empty):
    ```promql
