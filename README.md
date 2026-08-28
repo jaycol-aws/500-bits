@@ -122,6 +122,8 @@ Notes:
 |---|---|---|
 | `checkout_requests_total` | Counter | `outcome` (success\|error), `route` |
 | `checkout_request_duration_seconds` | Histogram | `route` |
+| `dependency_requests_total` | Counter | `dependency` (payments-service), `dependency.version`, `outcome` |
+| `dependency_request_duration_seconds` | Histogram | `dependency`, `dependency.version` |
 
 ## Troubleshooting
 

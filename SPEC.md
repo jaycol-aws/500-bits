@@ -23,6 +23,8 @@ endpoints here.
 |---|---|---|---|---|
 | Request count | `checkout_requests_total` | Counter (delta) | `{requests}` | `outcome` = `success`\|`error`, `route` = `/checkout` |
 | Request latency | `checkout_request_duration_seconds` | Histogram | `s` | `route` = `/checkout` |
+| Dependency call count | `dependency_requests_total` | Counter (delta) | `{requests}` | `dependency` = `payments-service`, `dependency.version`, `outcome` |
+| Dependency latency | `dependency_request_duration_seconds` | Histogram | `s` | `dependency` = `payments-service`, `dependency.version` |
 
 (Underscore names chosen so PromQL selectors need no quoting.)
 
@@ -39,10 +41,21 @@ endpoints here.
 - Optional CLI: `cwpromql query '<promql>' --region us-east-1` (SigV4 service
   `monitoring`, same `host/api/v1/*`) — requires installing cw-otel-cli.
 
-## Fault injection (Act 4)
-- App exposes `GET /admin/fault?mode=none|latency|error&rate=<0..1>`.
-- `error` mode: fraction `rate` of `/checkout` calls return 500 → `outcome="error"`.
-- `latency` mode: adds ~800ms–1.5s to `/checkout` for fraction `rate`.
+## Fault injection (Act 4) — degrades the payments-service dependency
+Checkout calls a simulated `payments-service` dependency (client budget 1s). The
+fault degrades that dependency, so checkout fails as a **downstream consequence**
+— an investigation finds a real causal chain, not an injected flag.
+- App exposes `GET /admin/fault?mode=none|latency|error&rate=<0..1>` (and the SSM
+  flag). Both drive the same dependency degradation.
+- `error` mode: fraction `rate` of payments-service calls return **HTTP 503** →
+  checkout returns `outcome="error"` (cause logged: upstream 503).
+- `latency` mode: adds ~0.8–1.5s to payments-service calls; those exceeding the
+  1s client budget make checkout fail with a **context deadline exceeded** and
+  drive up `checkout_request_duration_seconds`.
+- **Deploy correlation:** while faulted, dependency metrics carry
+  `dependency.version = 2.5.0` (healthy = `2.4.1`), and a one-time log marker
+  `event=deploy dependency=payments-service version=2.5.0` fires on onset — so the
+  incident lines up with a payments-service "deploy" for the agent's "what changed".
 - An internal load generator drives ~5 rps against `/checkout` so metrics always flow.
 
 ## PromQL alarm (Act 4) — error-rate SLO breach
