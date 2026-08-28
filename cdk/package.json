@@ -1,7 +1,7 @@
 {
   "name": "five-hundred-bits-cdk",
   "version": "1.0.0",
-  "description": "CDK app for the '500 Bits to Impact' demo: Fargate checkout-service + ADOT collector sidecar exporting OTLP metrics to CloudWatch.",
+  "description": "CDK app for the '500 Bits to Impact' demo: Fargate checkout-service + OpenTelemetry Collector sidecar exporting OTLP metrics to CloudWatch.",
   "private": true,
   "bin": {
     "app": "bin/app.ts"

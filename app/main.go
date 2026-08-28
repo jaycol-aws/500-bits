@@ -4,7 +4,7 @@
 // SPEC.md. It self-drives ~5 rps of traffic so telemetry always flows during
 // the demo, and exposes /admin/fault to inject an error or latency incident.
 //
-// Metrics (OTel -> OTLP/gRPC -> ADOT sidecar -> CloudWatch OTLP endpoint):
+// Metrics (OTel -> OTLP/gRPC -> OpenTelemetry Collector sidecar -> CloudWatch OTLP endpoint):
 //   checkout_requests_total          Counter   attrs: outcome, route
 //   checkout_request_duration_seconds Histogram attrs: route
 package main
@@ -75,7 +75,7 @@ func initMeter(ctx context.Context) (func(context.Context) error, error) {
 		return nil, err
 	}
 
-	// OTLP/gRPC to the ADOT sidecar. Endpoint from OTEL_EXPORTER_OTLP_ENDPOINT
+	// OTLP/gRPC to the collector sidecar. Endpoint from OTEL_EXPORTER_OTLP_ENDPOINT
 	// (default localhost:4317); insecure because it's a same-task loopback hop.
 	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	if endpoint == "" {

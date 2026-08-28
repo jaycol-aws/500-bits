@@ -1,10 +1,13 @@
-# ADOT collector config — 500 Bits to Impact
+# OpenTelemetry Collector config — 500 Bits to Impact
 #
 # Receives OTLP from the checkout-service app (sidecar, same task) and exports
 # to the CloudWatch OTLP metrics endpoint using SigV4 signing.
 #
-# Passed to the aws-otel-collector container via the AOT_CONFIG_CONTENT env var
-# (see cdk/lib/five-hundred-bits-stack.ts). Endpoint + service per SPEC.md.
+# Runs on the upstream OpenTelemetry Collector (contrib distro), which ships the
+# otlphttp exporter and sigv4auth extension used here. The CDK passes this file
+# to the collector via the OTEL_CONFIG env var + `--config=env:OTEL_CONFIG`
+# (see cdk/lib/five-hundred-bits-stack.ts), and substitutes the deploy region
+# into the endpoint + sigv4auth region below. Endpoint + service per SPEC.md.
 
 receivers:
   otlp:
