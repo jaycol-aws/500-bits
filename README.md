@@ -59,7 +59,7 @@ credentials into* the CDK.
 
 | To run… | You need | Set up how |
 |---|---|---|
-| **Acts 0–3 + the alarm** (deploy, query, alarm breaches) | Just an AWS account (us-east-1) with CDK bootstrapped | `cdk deploy` — nothing else |
+| **Acts 0–3 + the alarm** (deploy, query, alarm breaches) | An AWS account (us-east-1) with CDK bootstrapped, **and one free VPC slot** (the stack creates its own dedicated VPC; the default limit is 5 VPCs/Region) | `cdk deploy` — nothing else |
 | **Act 4 manual hand-off** ("give me an overview of my recent alarms") | A **pre-existing DevOps Agent Space** with this account associated + a valid monitor role | One-time in the DevOps Agent console |
 | **Act 4 auto-trigger** (alarm breach starts the investigation) | The space above **plus** a **generic webhook** registered in it (URL + HMAC secret) | Console → Agent Space → **Associations → MCP Servers → register webhook**; copy the URL + secret (shown once) |
 
@@ -122,6 +122,28 @@ Notes:
 |---|---|---|
 | `checkout_requests_total` | Counter | `outcome` (success\|error), `route` |
 | `checkout_request_duration_seconds` | Histogram | `route` |
+
+## Troubleshooting
+
+- **`Early validation failed ... AWS::EarlyValidation::ResourceExistenceCheck`**
+  on `cdk deploy`: the umbrella hook name hides the real reason. Get the actual
+  per-resource error with `describe-events` against the **change-set ARN** (not
+  `describe-stack-events` on the stack):
+  ```bash
+  CS=$(aws cloudformation list-change-sets --stack-name FiveHundredBitsStack \
+        --region us-east-1 --query 'Summaries[0].ChangeSetId' --output text)
+  aws cloudformation describe-events --change-set-name "$CS" --region us-east-1
+  ```
+  Look for the `VALIDATION_ERROR` event's `ValidationName` and
+  `ValidationStatusReason` — it names the exact resource and problem.
+- **`NAME_CONFLICT ... '/ecs/500-bits-to-impact' already exists`**: a prior
+  rolled-back/interrupted deploy orphaned the fixed-name log group. The stack
+  now sets `removalPolicy: DESTROY` so this won't recur, but to clear an
+  existing orphan once:
+  `aws logs delete-log-group --log-group-name /ecs/500-bits-to-impact --region us-east-1`,
+  then redeploy.
+- **A stack stuck in `ROLLBACK_COMPLETE` / `REVIEW_IN_PROGRESS`** can't be
+  updated — delete it, then `cdk deploy` again.
 
 ## Notes / caveats
 - CloudWatch OTLP metrics + PromQL is a **preview** capability. PromQL alarms are
