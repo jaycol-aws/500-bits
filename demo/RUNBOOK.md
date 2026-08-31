@@ -75,12 +75,38 @@ you can't fully script.
    expect the `checkout_*` series. *(Optional: `cwpromql metrics --filter checkout
    --region us-east-1` if the CLI is installed.)*
 
-3. **Stage the PromQL alarm** (one-time, fully scriptable — no console step):
+3. **Stage the PromQL alarm** (one-time). Pick **one** of the two options below —
+   both create the identical alarm. **It must be named exactly
+   `checkout-error-rate-slo`**: the auto-trigger's EventBridge rule matches that
+   name, so a typo means the breach never starts an investigation.
+
+   **Option A — script (fastest):**
    ```bash
    cd demo && ./create-alarm.sh          # put-metric-alarm --evaluation-criteria PromQLCriteria
    ```
-   > Note: the alarm is created by this script, **not** by the CDK stack. Remember
-   > to delete it at teardown (see below) — `cdk destroy` won't remove it.
+
+   **Option B — visually in Query Studio (more demo-friendly):** build the alarm
+   live in the same PromQL editor you use for Act 3 — a nice way to land "any
+   query can become an SLO alarm" without dropping to a terminal.
+   1. Console → **CloudWatch → Metrics → Query**, switch the editor to **PromQL**.
+   2. Paste the SLO error-ratio query (note the `{__name__="metric", label="val"}`
+      selector form — CloudWatch rejects bare-name + inline matchers):
+      ```promql
+      sum(rate({__name__="checkout_requests_total", outcome="error"}[1m])) / sum(rate({__name__="checkout_requests_total"}[1m]))
+      ```
+      Run it — while healthy it returns no series (empty graph). That's expected.
+   3. Click **Create alarm** (the bell above the query) to open the alarm form
+      pre-filled with this PromQL.
+   4. Condition: **Static**, **Greater than** `0.2` (the 20% error-rate SLO).
+   5. Under evaluation, match the script's timing where the console exposes it —
+      **evaluation interval 60s**, **pending period 30s**, **recovery period 60s**
+      (exact parity isn't critical; the defaults breach fine for the demo).
+   6. **Name it exactly `checkout-error-rate-slo`.** No alarm action / SNS topic is
+      needed — the auto-trigger fires off the alarm's **state change** via
+      EventBridge, not an alarm action. Create it.
+
+   > Note: however you create it, the alarm is **not** part of the CDK stack.
+   > Remember to delete it at teardown (see below) — `cdk destroy` won't remove it.
 
 4. **(Optional) Deploy the auto-trigger** so a breach starts the investigation
    with no prompt (see Act 4 variant for how to get the webhook URL + secret):
