@@ -10,8 +10,8 @@ never seen the repo can deliver the session end to end.
 > [`deck/outline.md`](../deck/outline.md); the presentable deck is
 > `deck/index.html` (arrow keys to nav, `F` fullscreen).
 
-> **Region:** the repo *defaults* to **us-east-1** (that's where the reference
-> "Olympus" Agent Space lives), but this is **not** a platform requirement.
+> **Region:** the repo *defaults* to **us-east-1** (that's where the DevOps Agent
+> Space this reference build uses lives), but this is **not** a platform requirement.
 > CloudWatch OTLP metrics + PromQL and the DevOps Agent are multi-region — run
 > this in **any region that offers both**. To relocate, deploy with
 > `-c region=<region>` (or set `CDK_DEFAULT_REGION`) and use a DevOps Agent Space
@@ -46,8 +46,8 @@ The "~500 bits" is a storytelling hook, not a spec constant — own that framing
 
 **For Act 4 (the DevOps Agent finale):**
 - A **DevOps Agent Space in your chosen region** with **this account associated**
-  and a valid **monitor role** (the reference environment is the "Olympus" space
-  in us-east-1 — substitute your own). Base Acts 0–3 need none of this.
+  and a valid **monitor role** (use your own Space — the reference build used one
+  in us-east-1). Base Acts 0–3 need none of this.
 - *(Auto-trigger variant only)* a **generic webhook** registered in that Space
   (URL + HMAC secret) — see the Act 4 variant below.
 
@@ -58,6 +58,9 @@ you can't fully script.
 ---
 
 ## Pre-flight (do this 1–2 hours before the session)
+
+> The commands below hard-code `--region us-east-1`. If you relocated per the
+> region note above, substitute your region throughout.
 
 1. **Deploy the stack** (builds the app image + provisions VPC/Fargate/collector):
    ```bash
@@ -115,6 +118,25 @@ you can't fully script.
    export WEBHOOK_SECRET='<hmac secret>'
    ./deploy-auto-trigger.sh              # NoEcho CFN params -> Secrets Manager
    ```
+   The wrapper deploys with `--method direct` on purpose — a fresh one-shot
+   auto-trigger deploy otherwise trips the `AWS::EarlyValidation::ResourceExistenceCheck`
+   false positive (a single CREATE that adds the trigger Lambda). Deploying by
+   hand? Add `--method direct` to your `cdk deploy`.
+
+   **Then test-fire it once — REQUIRED (this is what catches a bad webhook secret):**
+   ```bash
+   aws cloudwatch set-alarm-state --region us-east-1 \
+     --alarm-name checkout-error-rate-slo --state-value ALARM --state-reason preflight
+   # Confirm the trigger Lambda logged "webhook HTTP 200" (log group
+   # FiveHundredBitsStack-AutoTriggerFnLogGroup*) and a new investigation appeared.
+   aws cloudwatch set-alarm-state --region us-east-1 \
+     --alarm-name checkout-error-rate-slo --state-value OK --state-reason reset
+   ```
+   A wrong/placeholder secret deploys green and only fails here with **HTTP 403**.
+   After fixing the secret in Secrets Manager you must **cold-start the Lambda**
+   (it caches the secret on warm containers) — e.g.
+   `aws lambda update-function-configuration --function-name <TriggerFn> --description recycle`
+   — or the next fire still 403s.
 
 5. **Reset the fault flag to healthy:**
    ```bash
@@ -126,6 +148,21 @@ you can't fully script.
 
 **Two windows ready for the live session:** (a) a browser on CloudWatch Query
 Studio, (b) a terminal in `demo/`. Zoom the browser/terminal fonts up now.
+
+> **⚠️ Before you go live (auto-trigger only):** a *successful* test-fire (or any
+> earlier breach) claims a **30-minute** per-alarm dedup slot, which will
+> **silently suppress your on-stage trigger** if the live breach lands within that
+> window. Clear it right before you present:
+> ```bash
+> aws dynamodb delete-item --region us-east-1 \
+>   --table-name "$(aws cloudformation describe-stacks --stack-name FiveHundredBitsStack \
+>     --region us-east-1 \
+>     --query "Stacks[0].Outputs[?starts_with(OutputKey,'AutoTriggerDedupTableName')].OutputValue" \
+>     --output text)" \
+>   --key '{"alarmName":{"S":"checkout-error-rate-slo"}}'
+> ```
+> (A *failed* fire — e.g. a 403 — does **not** claim the slot, so this only
+> matters once the webhook works.)
 
 ---
 
@@ -201,6 +238,16 @@ Add each query as a new line so the graph builds up live.
 > intentional — an inherent tell of any injected demo. What we've made natural is
 > the **investigation surface** (the causal chain + logs the agent reasons over).
 
+**Fault control — the three commands** (run from `demo/`):
+```bash
+./inject-fault.sh error 0.6     # TRIGGER the incident: 60% of checkouts fail (payments-service 503s)
+./inject-fault.sh latency 0.5   # TRIGGER (alternative): 50% get +0.8–1.5s, tripping the checkout timeout
+./inject-fault.sh none          # RECOVER: flag back to healthy
+```
+`error 0.6` is what the walkthrough below uses; bump to `error 0.9` to make the
+alarm flip faster if you're short on time. The script resolves the SSM parameter
+name from the stack output automatically — no args beyond mode + rate.
+
 1. **Do:** In **Query Studio**, show the alarm query returns **no series**
    (healthy — numerator empty):
    ```promql
@@ -209,6 +256,24 @@ Add each query as a new line so the graph builds up live.
    **Say:** "This is our SLO: error ratio. Right now it returns nothing —
    healthy." **Emphasize** the selector rule: match a label with the
    `{__name__="metric", label="val"}` form (bare `metric{...}` is rejected).
+
+   **Explaining the query to the audience — read it inside-out:**
+   - `{__name__="checkout_requests_total", outcome="error"}` — *select the series.*
+     The counter from Act 1, filtered to just the failing requests
+     (`outcome="error"`). CloudWatch needs the `{__name__="metric", …}` selector
+     form here — bare `checkout_requests_total{…}` is rejected.
+   - `rate(…[1m])` — *turn that counter into a per-second rate*, averaged over a
+     1-minute sliding window. Counters only ever climb; `rate` answers "how fast
+     is it climbing right now." The short `[1m]` window makes the graph react
+     within a minute (production would often use `[5m]`).
+   - `sum(…)` — *collapse every matching series into one number* (add the error
+     rate across all tasks/dimensions).
+   - So the **numerator** = error requests/sec, and the **denominator** is the
+     same `sum(rate(...))` over *all* requests (no `outcome` filter) = total
+     requests/sec.
+   - The **division** yields the **error ratio**: a value from 0 to 1 — the
+     fraction of checkouts failing. The alarm's `> 0.2` means "fire when more than
+     **20%** are failing." That threshold lives in the *alarm*, not the query.
 2. **Do — inject the incident:**
    ```bash
    cd demo && ./inject-fault.sh error 0.6
@@ -270,12 +335,18 @@ the alarm drove the investigation."* Then open it and narrate root cause.
 
 - **Why it won't spam:** the Lambda claims a per-alarm cooldown slot in DynamoDB
   (default 30 min) before POSTing, so flapping yields at most one investigation
-  per window. **Re-testing within 30 min?** clear the slot first:
+  per window. **Re-testing within 30 min?** clear the slot first (the table name
+  is the `AutoTriggerDedupTableName` stack output — resolve it inline):
   ```bash
   aws dynamodb delete-item --region us-east-1 \
-    --table-name <AutoTriggerDedupTableName-output> \
+    --table-name "$(aws cloudformation describe-stacks --stack-name FiveHundredBitsStack \
+      --region us-east-1 \
+      --query "Stacks[0].Outputs[?starts_with(OutputKey,'AutoTriggerDedupTableName')].OutputValue" \
+      --output text)" \
     --key '{"alarmName":{"S":"checkout-error-rate-slo"}}'
   ```
+  The same trap sits between a pre-flight test-fire and the live run — see the
+  **Before you go live** warning in Pre-flight.
 - **Smoke test without touching metrics:**
   `aws cloudwatch set-alarm-state --alarm-name checkout-error-rate-slo \
    --state-value ALARM --state-reason test --region us-east-1`
@@ -325,6 +396,26 @@ aws cloudwatch delete-alarms --alarm-names checkout-error-rate-slo --region us-e
 #    Secrets Manager, log group — the log group now has removalPolicy DESTROY)
 cd ../cdk && npx cdk destroy
 ```
+- **If `cdk destroy` fails on the VPC or subnets (`DependencyViolation`):** GuardDuty
+  Runtime Monitoring auto-management orphans a *managed* VPC endpoint + security
+  group that the stack doesn't own — they pin the subnets, then the VPC. Delete
+  them, then re-run `cdk destroy`:
+  ```bash
+  VPC=$(aws cloudformation describe-stack-resources --stack-name FiveHundredBitsStack \
+    --region us-east-1 \
+    --query "StackResources[?ResourceType=='AWS::EC2::VPC'].PhysicalResourceId" --output text)
+  # 1. delete the GuardDuty-managed VPC endpoint(s) (releases the pinned ENIs):
+  aws ec2 describe-vpc-endpoints --region us-east-1 \
+    --filters Name=vpc-id,Values="$VPC" Name=tag:GuardDutyManaged,Values=true \
+    --query 'VpcEndpoints[].VpcEndpointId' --output text \
+    | xargs -r aws ec2 delete-vpc-endpoints --region us-east-1 --vpc-endpoint-ids
+  # 2. ~1 min later (once the ENIs release), delete the GuardDuty-managed SG:
+  aws ec2 describe-security-groups --region us-east-1 \
+    --filters Name=vpc-id,Values="$VPC" Name=tag:GuardDutyManaged,Values=true \
+    --query 'SecurityGroups[].GroupId' --output text \
+    | xargs -r -n1 aws ec2 delete-security-group --group-id
+  cd ../cdk && npx cdk destroy      # re-run; the VPC now deletes cleanly
+  ```
 - **Agent Space:** dismiss/close any **test investigations** you created so they
   don't clutter the space (and any smoke-test webhook you registered, if temporary).
 - **Verify clean:** `aws cloudformation describe-stacks --stack-name FiveHundredBitsStack

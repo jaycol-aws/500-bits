@@ -5,8 +5,8 @@ Collector, PromQL queries, alarm, CDK, deck) MUST match the names, ports, and
 endpoints here.
 
 ## Region / accounts
-- **Region: defaults to `us-east-1`** (the reference DevOps Agent "Olympus" Agent
-  Space lives here) — **not** a platform requirement. Override at deploy with
+- **Region: defaults to `us-east-1`** (the reference DevOps Agent Space lives
+  here) — **not** a platform requirement. Override at deploy with
   `-c region=<region>` (or `CDK_DEFAULT_REGION`); the app region, container env,
   metrics endpoint, and `sigv4auth` region all follow it. Run in any region that
   offers CloudWatch OTLP metrics + a DevOps Agent Space.

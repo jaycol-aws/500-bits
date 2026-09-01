@@ -2,8 +2,8 @@
 /**
  * CDK application entry point for the "500 Bits to Impact" demo.
  *
- * Pins the deployment to us-east-1 (the region where the DevOps Agent
- * "Olympus" Agent Space lives, per SPEC.md) so the CloudWatch OTLP metrics
+ * Pins the deployment to us-east-1 (the region where the reference DevOps Agent
+ * Space lives, per SPEC.md) so the CloudWatch OTLP metrics
  * endpoint and the SigV4-signed exporter line up with the query path.
  */
 import * as cdk from 'aws-cdk-lib';

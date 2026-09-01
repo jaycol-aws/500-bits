@@ -25,8 +25,13 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../cdk"
 
+# --method direct uses CreateStack/UpdateStack instead of a change set, which
+# skips the AWS::EarlyValidation::ResourceExistenceCheck hook. That hook has a
+# known false positive when a single fresh CREATE adds the auto-trigger Lambda;
+# --method direct sidesteps it. (Pass extra flags via "$@" as needed.)
 npx cdk deploy \
   -c enableAutoTrigger=true \
+  --method direct \
   --parameters "WebhookUrl=${WEBHOOK_URL}" \
   --parameters "WebhookSecret=${WEBHOOK_SECRET}" \
   "$@"

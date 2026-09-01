@@ -38,7 +38,7 @@
   - → **OpenTelemetry Collector sidecar** (same task): OTLP/gRPC in at `localhost:4317` → `otlphttp` exporter w/ `sigv4auth`
   - → **CloudWatch OTel metric store** via `https://monitoring.us-east-1.amazonaws.com/v1/metrics`
   - → **PromQL query API** — query in **CloudWatch Query Studio** (optionally `cwpromql`) **+ PromQL alarm** (`checkout-error-rate-slo`)
-  - → **Amazon DevOps Agent** (Olympus Agent Space, us-east-1) for root-cause on breach
+  - → **Amazon DevOps Agent** (your Agent Space, us-east-1) for root-cause on breach
 - Callout: one Fargate task = app + collector; task role needs `cloudwatch:PutMetricData`
 
 > **Speaker note:** This is the only architecture slide — trace the single observation's path with your finger, then drop to the terminal. Everything after this is live.
