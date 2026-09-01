@@ -131,7 +131,7 @@
       <div class="arrow">→</div>
       <div class="node"><div class="t">PromQL</div><div class="d">Query Studio<br>+ PromQL alarm</div></div>
       <div class="arrow">→</div>
-      <div class="node"><div class="t">DevOps Agent</div><div class="d">Olympus space<br>root-cause on breach</div></div>
+      <div class="node"><div class="t">DevOps Agent</div><div class="d">Agent Space<br>root-cause on breach</div></div>
     </div>
     <p style="margin-top:1.2em"><span class="tag">one task = app + collector</span><span class="tag">task role: cloudwatch:PutMetricData</span><span class="tag">us-east-1 throughout</span></p>
     <div class="note"><b>Speaker (~2m, close of Act 2):</b> The ONLY architecture slide — trace the path left to right with your cursor. Land two things: (1) one Fargate task holds both the app and the collector sidecar — a pattern they can copy verbatim; (2) the export is "just" OTLP/HTTP to a SigV4-signed CloudWatch URL, no new protocol to learn. Then drop straight to the terminal; don't linger on the boxes.</div>
